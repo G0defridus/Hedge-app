@@ -1,0 +1,9 @@
+streamlit
+pandas
+numpy
+altair
+entsoe-py
+openpyxl
+lxml
+beautifulsoup4
+requests
