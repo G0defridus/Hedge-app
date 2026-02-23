@@ -5,9 +5,13 @@ def calculate_metrics(sub_df, base, peak_add, p_mw_col):
     hedge = base + (sub_df['is_peak'] * peak_add)
     prof = sub_df[p_mw_col]
     vol_prof = prof.sum() * 0.25
+    
+    # Over_hedge_mwh: Voor zowel producer als consumer is dit "Hedge - Profiel > 0"
     diff = hedge - prof
     over_hedge_mwh = diff[diff > 0].sum() * 0.25
-    over_pct = (over_hedge_mwh / vol_prof * 100) if vol_prof != 0 else 0
+    
+    # Gebruik de absolute waarde van het profiel, anders faalt de strategie bij producers
+    over_pct = (over_hedge_mwh / abs(vol_prof) * 100) if vol_prof != 0 else 0
     return over_pct
 
 def find_optimal_mw(sub_df, p_mw_col, target_over_pct_limit=None, percent_volume_target=None):
