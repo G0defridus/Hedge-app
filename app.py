@@ -10,8 +10,8 @@ from endex_pricing import get_default_price
 from hedge_optimizer import find_optimal_mw
 
 # Pagina instellingen
-st.set_page_config(page_title="Energy Hedge Optimizer 8.8", layout="wide")
-st.title("⚡ Energy Hedge Optimizer 8.8 (Modulair)")
+st.set_page_config(page_title="Energy Hedge Optimizer 8.9", layout="wide")
+st.title("⚡ Energy Hedge Optimizer 8.9 (Modulair)")
 
 # --- DOCUMENTATIE BLOK ---
 with st.expander("📘 Lees mij: Achtergrond en Methodiek (Klik om te openen)", expanded=False):
@@ -239,9 +239,18 @@ if df_hedge is not None:
     # --- RESULTATEN BEREKENEN ---
     df['Profile_MWh'] = df[p_mw_col] * 0.25
     df['Hedge_MWh'] = df['Current_Hedge_MW'] * 0.25
-    df['Used_Hedge_MWh'] = np.minimum(df['Hedge_MWh'], df['Profile_MWh']) 
+    
+    # Over_Hedge (Teveel) en Under_Hedge (Tekort) werken door deze formule perfect 
+    # voor zowel positieve (consumer) als negatieve (producer) getallen.
     df['Over_Hedge_MWh'] = np.maximum(0, df['Hedge_MWh'] - df['Profile_MWh'])
     df['Under_Hedge_MWh'] = np.maximum(0, df['Profile_MWh'] - df['Hedge_MWh'])
+
+    # Absolute dekking puur voor de UI KPI weergave
+    df['Used_Hedge_MWh_Abs'] = np.where(
+        np.sign(df['Profile_MWh']) == np.sign(df['Hedge_MWh']),
+        np.minimum(df['Profile_MWh'].abs(), df['Hedge_MWh'].abs()),
+        0.0
+    )
 
     # Blok kosten = (MW * 0.25) * Prijs
     df['Cost_Hedge_Base_EUR'] = (df['Hedge_Base_MW'] * 0.25) * df['Price_Base']
@@ -255,24 +264,31 @@ if df_hedge is not None:
     df['Rev_Sell_EUR'] = df['Over_Hedge_MWh'] * df['EPEX_EUR_MWh'] if epex_loaded else 0.0
     df['Net_Spot_EUR'] = df['Rev_Sell_EUR'] - df['Cost_Buy_EUR'] if epex_loaded else 0.0
 
+    # --- UI VARIABELEN & ABSOLUTE WAARDEN ---
     total_prof = df['Profile_MWh'].sum()
-    total_hedge = df['Hedge_MWh'].sum()
+    total_prof_abs = abs(total_prof)
+    total_hedge_abs = df['Hedge_MWh'].abs().sum()
     total_over = df['Over_Hedge_MWh'].sum()
     total_under = df['Under_Hedge_MWh'].sum()
-    denom = total_prof if total_prof != 0 else 1.0
+    
+    # Voorkom delen door nul, gebruik altijd de absolute waarde
+    denom = total_prof_abs if total_prof_abs != 0 else 1.0
     
     # UI METRICS VOLUMES
     st.markdown("### 📊 Volume Balans")
     k1, k2, k3, k4, k5 = st.columns(5)
     
-    pct_hedge_eff = (df['Used_Hedge_MWh'].sum() / denom) * 100
-    pct_hedge_tot = (total_hedge / denom) * 100
+    pct_hedge_eff = (df['Used_Hedge_MWh_Abs'].sum() / denom) * 100
+    pct_hedge_tot = (total_hedge_abs / denom) * 100
     
-    k1.metric("Effectieve Dekking", f"{pct_hedge_eff:.1f}%", help="Percentage van het verbruik dat direct in hetzelfde kwartier is afgedekt.")
-    k2.metric("Totale Hedge %", f"{pct_hedge_tot:.1f}%", help="Totaal ingekocht volume gedeeld door het totale verbruik.")
-    k3.metric("Totaal Verbruik", f"{total_prof:,.0f} MWh")
-    k4.metric("Teveel (Over)", f"{total_over:,.0f} MWh", f"{(total_over/denom)*100:.1f}%", delta_color="inverse")
-    k5.metric("Tekort (Under)", f"{total_under:,.0f} MWh", f"{(total_under/denom)*100:.1f}%", delta_color="inverse")
+    k1.metric("Effectieve Dekking", f"{pct_hedge_eff:.1f}%", help="Percentage van het profiel dat direct in hetzelfde kwartier is afgedekt.")
+    k2.metric("Totale Hedge %", f"{pct_hedge_tot:.1f}%", help="Totaal gehedged volume gedeeld door het totale profiel.")
+    
+    prof_label = "Totaal Opwek" if total_prof < 0 else "Totaal Verbruik"
+    k3.metric(prof_label, f"{total_prof_abs:,.0f} MWh")
+    
+    k4.metric("Spot Verkoop (Teveel)", f"{total_over:,.0f} MWh", f"{(total_over/denom)*100:.1f}%", delta_color="inverse")
+    k5.metric("Spot Inkoop (Tekort)", f"{total_under:,.0f} MWh", f"{(total_under/denom)*100:.1f}%", delta_color="inverse")
 
     # UI METRICS FINANCIEEL
     if epex_loaded:
@@ -281,25 +297,26 @@ if df_hedge is not None:
         
         net_spot_eur = df['Net_Spot_EUR'].sum()
         tot_energy_cost = tot_hedge_eur - net_spot_eur 
-        avg_cost = tot_energy_cost / denom if denom > 0 else 0
+        avg_cost = tot_energy_cost / denom
         
         f1.metric("Kosten Inkoopblokken", f"€ {tot_hedge_eur:,.0f}")
         
         net_color = "normal" if net_spot_eur >= 0 else "inverse"
         f2.metric("Netto Spot Resultaat", f"€ {net_spot_eur:,.0f}", delta="Winst" if net_spot_eur >=0 else "Verlies", delta_color=net_color)
         
-        f3.metric("Totale Kosten (Netto)", f"€ {tot_energy_cost:,.0f}")
+        cost_label = "Totale Verdienste (Netto)" if tot_energy_cost < 0 else "Totale Kosten (Netto)"
+        f3.metric(cost_label, f"€ {abs(tot_energy_cost):,.0f}")
         
         if avg_cost < 0:
             f4.metric("Integrale Opbrengst (Winst)", f"€ {abs(avg_cost):.2f} / MWh", delta="Verdienste", delta_color="normal")
         else:
-            f4.metric("Integrale Kostprijs", f"€ {avg_cost:.2f} / MWh")
+            f4.metric("Integrale Kostprijs", f"€ {avg_cost:.2f} / MWh", delta="Kosten", delta_color="inverse")
     else:
         st.markdown("### 💶 Financiële Waardering (Alleen Inkoopblokken)")
         f1, f2, f3 = st.columns(3)
         f1.metric("Kosten Inkoopblokken", f"€ {tot_hedge_eur:,.0f}")
-        gem_blok = tot_hedge_eur / df['Hedge_MWh'].sum() if df['Hedge_MWh'].sum() > 0 else 0
-        f2.metric("Gemiddelde Blokprijs", f"€ {gem_blok:.2f} / MWh")
+        gem_blok = tot_hedge_eur / total_hedge_abs if total_hedge_abs > 0 else 0
+        f2.metric("Gemiddelde Blokprijs", f"€ {abs(gem_blok):.2f} / MWh")
 
     st.markdown("---")
     st.subheader("🔎 Seizoensanalyse (4 Representatieve Weken)")
@@ -329,20 +346,20 @@ if df_hedge is not None:
     st.subheader("📊 Kwartaal Balans")
     
     q_stats = df.groupby('Quarter').apply(lambda x: pd.Series({
-        'Verbruik (MWh)': x['Profile_MWh'].sum(),
-        'Hedge %': (x['Hedge_MWh'].sum() / x['Profile_MWh'].sum() * 100) if x['Profile_MWh'].sum() != 0 else 0,
-        'Dekking %': (x['Used_Hedge_MWh'].sum() / x['Profile_MWh'].sum() * 100) if x['Profile_MWh'].sum() != 0 else 0,
-        'Teveel (MWh)': x['Over_Hedge_MWh'].sum(),
-        'Tekort (MWh)': x['Under_Hedge_MWh'].sum(),
+        'Volume (MWh)': abs(x['Profile_MWh'].sum()),
+        'Hedge %': (x['Hedge_MWh'].abs().sum() / x['Profile_MWh'].abs().sum() * 100) if x['Profile_MWh'].sum() != 0 else 0,
+        'Dekking %': (x['Used_Hedge_MWh_Abs'].sum() / x['Profile_MWh'].abs().sum() * 100) if x['Profile_MWh'].sum() != 0 else 0,
+        'Spot Verkoop (MWh)': x['Over_Hedge_MWh'].sum(),
+        'Spot Inkoop (MWh)': x['Under_Hedge_MWh'].sum(),
         'Blokken Kosten (€)': x['Cost_Hedge_Total_EUR'].sum(),
         'EPEX Gem. (€/MWh)': x['EPEX_EUR_MWh'].mean() if epex_loaded else 0,
         'Netto Spot (€)': x['Net_Spot_EUR'].sum() if epex_loaded else 0,
         'Totale Kosten (€)': (x['Cost_Hedge_Total_EUR'].sum() - x['Net_Spot_EUR'].sum()) if epex_loaded else x['Cost_Hedge_Total_EUR'].sum(),
-        'Integrale Prijs (€/MWh)': ((x['Cost_Hedge_Total_EUR'].sum() - x['Net_Spot_EUR'].sum()) / x['Profile_MWh'].sum()) if epex_loaded and x['Profile_MWh'].sum() != 0 else (x['Cost_Hedge_Total_EUR'].sum() / x['Profile_MWh'].sum() if x['Profile_MWh'].sum() != 0 else 0)
+        'Integrale Prijs (€/MWh)': ((x['Cost_Hedge_Total_EUR'].sum() - x['Net_Spot_EUR'].sum()) / x['Profile_MWh'].abs().sum()) if epex_loaded and x['Profile_MWh'].sum() != 0 else (x['Cost_Hedge_Total_EUR'].sum() / x['Profile_MWh'].abs().sum() if x['Profile_MWh'].sum() != 0 else 0)
     }))
 
     format_dict = {
-        'Verbruik (MWh)': "{:,.0f}", 'Hedge %': "{:.1f}%", 'Dekking %': "{:.1f}%", 'Teveel (MWh)': "{:,.0f}", 'Tekort (MWh)': "{:,.0f}",
+        'Volume (MWh)': "{:,.0f}", 'Hedge %': "{:.1f}%", 'Dekking %': "{:.1f}%", 'Spot Verkoop (MWh)': "{:,.0f}", 'Spot Inkoop (MWh)': "{:,.0f}",
         'Blokken Kosten (€)': "€ {:,.0f}", 'Totale Kosten (€)': "€ {:,.0f}", 'Integrale Prijs (€/MWh)': "€ {:.2f}"
     }
     if epex_loaded:
