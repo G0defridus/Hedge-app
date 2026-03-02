@@ -12,7 +12,7 @@ from hedge_optimizer import find_optimal_mw
 # --- PAGINA INSTELLINGEN & CENSO HUISSTIJL (CSS) ---
 st.set_page_config(page_title="Censo Energy Optimizer", layout="wide")
 
-# CSS aangepast zodat het perfect werkt in zowel Light Mode als Dark Mode
+# CSS: Dark mode compatible. Geen harde zwarte tekst meer, wel Censo fonts en accentkleuren.
 censo_css = """
 <style>
 @import url('https://fonts.googleapis.com/css2?family=Lexend+Deca:wght@400;500;700&family=Montserrat:ital,wght@1,400;1,500;1,700&display=swap');
@@ -30,7 +30,7 @@ h1, h2, h3, h4 {
 /* Knoppen in Censo Gold */
 .stButton>button {
     background-color: #fab517 !important;
-    color: #000000 !important; /* Tekst op de gouden knop altijd zwart */
+    color: #000000 !important; /* Tekst op de gouden knop altijd zwart voor contrast */
     border: none !important;
     border-radius: 4px;
     font-weight: 500;
@@ -58,7 +58,7 @@ h1, h2, h3, h4 {
 """
 st.markdown(censo_css, unsafe_allow_html=True)
 
-# Meerkleurige Censo Headline (Werkt nu goed in Light én Dark mode)
+# Meerkleurige Censo Headline 
 st.markdown("""
 <div style="font-size: 2.8rem; font-weight: 700; margin-bottom: 1rem; margin-top: -1rem; font-family: 'Lexend Deca', sans-serif;">
     De energie-strategie. <span style="color: #e8327c;">Maar dan simpel</span> <span style="color: #fab517;">_</span>
@@ -334,7 +334,7 @@ if df_hedge is not None:
     st.markdown("<br>", unsafe_allow_html=True)
     tab_main, tab_vol, tab_eco, tab_charts = st.tabs([
         "Samenvatting", 
-        "Jouw volume", 
+        "Jouw volume flow", 
         "Kengetallen", 
         "Seizoenen"
     ])
@@ -356,8 +356,8 @@ if df_hedge is not None:
         st.markdown("---")
         st.markdown("### De cijfers door het jaar heen _")
         
-        # FIX CASHFLOW: Groepeer expliciet op een String (tekst) veld zodat Altair niet crasht met datetimes
-        df['Maand_Naam'] = df['Date'].dt.strftime('%Y-%m')
+        # BUGFIX CASHFLOW: Zonder rare tekens in de format of datetimes
+        df['Maand_Naam'] = df['Date'].dt.strftime('%Y-%m') # Puur tekst
         
         monthly_agg = df.groupby('Maand_Naam')[['Cost_Hedge_Total_EUR', 'Cost_Buy_EUR', 'Rev_Sell_EUR']].sum().reset_index()
         monthly_agg['Rev_Sell_EUR'] = -monthly_agg['Rev_Sell_EUR'] 
@@ -370,20 +370,25 @@ if df_hedge is not None:
             'Rev_Sell_EUR': '3. Spot verkoop (overschot)'
         })
 
+        # Let op de simpele format in Tooltip en géén as-formatting errors
         cashflow_chart = alt.Chart(monthly_melt).mark_bar().encode(
-            x=alt.X('Maand_Naam:O', title='Maand (Jaar-Maand)'),  # :O is essentieel voor categorische x-as!
-            y=alt.Y('sum(Euro):Q', title='Bedrag (€)', axis=alt.Axis(format='€s')),
+            x=alt.X('Maand_Naam:N', title='Maand'),  
+            y=alt.Y('sum(Euro):Q', title='Bedrag in Euro'),
             color=alt.Color('Kostenpost:N', 
                             scale=alt.Scale(
                                 domain=['1. Vaste inkoop', '2. Spot inkoop (tekort)', '3. Spot verkoop (overschot)'],
-                                range=['#9e9e9e', '#e8327c', '#fab517'] # Censo 40% Black, Ruby, Gold
+                                range=['#808080', '#e8327c', '#fab517'] # 50% Black, Ruby, Gold
                             ), legend=alt.Legend(title="", orient="bottom")),
-            tooltip=[alt.Tooltip('Maand_Naam:O', title='Maand'), alt.Tooltip('Kostenpost:N'), alt.Tooltip('sum(Euro):Q', title='Bedrag', format='€,.0f')]
+            tooltip=[
+                alt.Tooltip('Maand_Naam:N', title='Maand'), 
+                alt.Tooltip('Kostenpost:N', title='Post'), 
+                alt.Tooltip('sum(Euro):Q', title='Bedrag (€)', format=',.0f')
+            ]
         ).properties(height=400)
         
         st.altair_chart(cashflow_chart, use_container_width=True)
 
-    # TAB 2: VOLUME BALANS (Visueel)
+    # TAB 2: VOLUME BALANS (Flow/Waterval Bar Chart)
     with tab_vol:
         st.markdown("### Jouw verbruik in balans _")
         v1, v2, v3 = st.columns(3)
@@ -392,21 +397,27 @@ if df_hedge is not None:
         v2.metric("Ingekocht via blokken", f"{total_hedge_abs:,.0f} MWh")
         v3.metric("Direct afgedekt", f"{pct_hedge_eff:.1f}%")
 
-        st.markdown("<br><br><b>Hoe wordt jouw volume exact ingevuld?</b>", unsafe_allow_html=True)
-        vol_data = pd.DataFrame({
-            'Categorie': ['Direct afgedekt', 'Spot inkoop (tekort)', 'Spot verkoop (overschot)'],
-            'MWh': [df['Used_Hedge_MWh_Abs'].sum(), total_under, total_over]
+        st.markdown("<br><br><b>De flow van jouw stroom _</b>", unsafe_allow_html=True)
+        st.info("Hier zie je stapsgewijs hoe jouw volume zich verhoudt tot je inkoop en de spotmarkt.")
+        
+        # De netto flow (Optie 3) in een overzichtelijk stappenplan
+        flow_data = pd.DataFrame({
+            'Stap': [f'1. {prof_label}', '2. Ingekocht via blokken', '3. Spot inkoop (tekort)', '4. Spot verkoop (overschot)'],
+            'MWh': [total_prof_abs, total_hedge_abs, total_under, total_over]
         })
         
-        pie_chart = alt.Chart(vol_data).mark_arc(innerRadius=60).encode(
-            theta=alt.Theta(field="MWh", type="quantitative"),
-            color=alt.Color(field="Categorie", type="nominal", 
-                            scale=alt.Scale(domain=['Direct afgedekt', 'Spot inkoop (tekort)', 'Spot verkoop (overschot)'],
-                                            range=['#fab517', '#e8327c', '#9e9e9e'])), # Gold, Ruby, 40% Black
-            tooltip=['Categorie', alt.Tooltip('MWh:Q', format=',.0f')]
-        ).properties(height=350)
+        flow_chart = alt.Chart(flow_data).mark_bar().encode(
+            x=alt.X('Stap:N', title='', sort=None, axis=alt.Axis(labelAngle=0)),
+            y=alt.Y('MWh:Q', title='Volume (MWh)'),
+            color=alt.Color('Stap:N', 
+                            scale=alt.Scale(
+                                domain=[f'1. {prof_label}', '2. Ingekocht via blokken', '3. Spot inkoop (tekort)', '4. Spot verkoop (overschot)'],
+                                range=['#9e9e9e', '#fab517', '#e8327c', '#636363'] # 40% Black, Gold, Ruby, 60% Black
+                            ), legend=None),
+            tooltip=[alt.Tooltip('Stap:N'), alt.Tooltip('MWh:Q', format=',.0f')]
+        ).properties(height=400)
         
-        st.altair_chart(pie_chart, use_container_width=True)
+        st.altair_chart(flow_chart, use_container_width=True)
 
     # TAB 3: UNIT ECONOMICS (Diepgaande KPI's)
     with tab_eco:
@@ -448,11 +459,10 @@ if df_hedge is not None:
                     st.info("Geen data beschikbaar voor deze periode.")
                     continue
                 
-                # FIX SEIZOENSGRAFIEK: Geen vervanging van namen, maar hernoem vóór het smelten om Altair blij te maken
+                # BUGFIX SEIZOENEN: Hernoem de kolommen strak vóórdat we smelten, zodat de kleuren goed pakken
                 mask = (df['Date'] >= week['start']) & (df['Date'] <= pd.Timestamp(week['end']) + pd.Timedelta(days=1))
-                plot_df = df.loc[mask, ['Date', p_mw_col, 'Current_Hedge_MW']].rename(
-                    columns={p_mw_col: 'Jouw profiel', 'Current_Hedge_MW': 'Inkoopblok'}
-                )
+                plot_df = df.loc[mask, ['Date', p_mw_col, 'Current_Hedge_MW']].copy()
+                plot_df.rename(columns={p_mw_col: 'Jouw profiel', 'Current_Hedge_MW': 'Inkoopblok'}, inplace=True)
                 
                 chart_data = plot_df.melt(id_vars=['Date'], var_name='Type', value_name='MW')
                 
