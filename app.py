@@ -9,21 +9,79 @@ from epex_api import fetch_epex_prices
 from endex_pricing import get_default_price
 from hedge_optimizer import find_optimal_mw
 
-# Pagina instellingen
-st.set_page_config(page_title="Energy Hedge Optimizer 9.1", layout="wide")
-st.title("⚡ Energy Hedge Optimizer 9.1 (Visual & Tabs)")
+# --- PAGINA INSTELLINGEN & CENSO HUISSTIJL (CSS) ---
+st.set_page_config(page_title="Censo Energy Optimizer", layout="wide")
+
+censo_css = """
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Lexend+Deca:wght@400;500;700&family=Montserrat:ital,wght@1,400;1,500;1,700&display=swap');
+
+html, body, [class*="css"] {
+    font-family: 'Lexend Deca', sans-serif !important;
+}
+
+h1, h2, h3, h4 {
+    font-family: 'Lexend Deca', sans-serif !important;
+    font-weight: 700 !important;
+    line-height: 1.1 !important;
+}
+
+/* Censo Meerkleurige Headline */
+.censo-title {
+    font-size: 2.8rem;
+    font-weight: 700;
+    color: #000000;
+    margin-bottom: 1rem;
+    margin-top: -1rem;
+}
+.censo-title .ruby { color: #e8327c; }
+.censo-title .gold { color: #fab517; }
+
+/* Knoppen in Censo Gold */
+.stButton>button {
+    background-color: #fab517 !important;
+    color: #000000 !important;
+    border: none !important;
+    border-radius: 4px;
+    font-weight: 500;
+}
+.stButton>button:hover {
+    background-color: #d99d12 !important; /* Gold shade 10 */
+}
+
+/* Tabbladen styling */
+.stTabs [data-baseweb="tab-list"] {
+    gap: 2rem;
+}
+.stTabs [data-baseweb="tab"] {
+    height: 3rem;
+    white-space: pre-wrap;
+    background-color: transparent;
+    border-radius: 0px;
+    color: #636363;
+    font-family: 'Lexend Deca', sans-serif;
+    font-weight: 500;
+}
+.stTabs [aria-selected="true"] {
+    color: #000000 !important;
+    border-bottom: 3px solid #e8327c !important; /* Ruby accent */
+}
+</style>
+"""
+st.markdown(censo_css, unsafe_allow_html=True)
+
+# Meerkleurige Censo Headline (Black - Ruby - Gold underscore)
+st.markdown('<div class="censo-title">De energie-strategie. <span class="ruby">Maar dan simpel</span> <span class="gold">_</span></div>', unsafe_allow_html=True)
 
 # --- DOCUMENTATIE BLOK ---
-with st.expander("📘 Lees mij: Achtergrond en Methodiek (Klik om te openen)", expanded=False):
+with st.expander("Hoe het werkt _", expanded=False):
     st.markdown("""
-    ### 1. Van Ruwe Data naar Profiel
-    Het model analyseert slimme meter data om te bepalen of een aansluiting een **Consumer**, **Prosumer** of **Producer**.
+    **Samen zorgen we dat het goed voelt.**
+    We analyseren jouw data en vertalen dit naar een helder energieprofiel. Geen ingewikkeld gedoe, we regelen het zodat alles soepel loopt.
     
-    ### 2. Hedge Strategie
-    We kopen in op de groothandelsmarkt in blokken van **0,1 MW** (Base en Peak).
-    
-    ### 3. Financiële Waardering (Blokken & Spot)
-    Via contractprijzen en EPEX Spotmarkt bepalen we de daadwerkelijke Integrale Kostprijs.
+    * **Stap 1:** Upload je data. Wij herkennen direct of je stroom verbruikt of opwekt.
+    * **Stap 2:** Kies je aanpak. We kopen slim in op de groothandelsmarkt in vaste blokken.
+    * **Stap 3:** Inzicht. Voor hetzelfde geld werkt het: we verrekenen de blokken met de flexibele spotmarkt zodat jij precies je échte kostprijs ziet.
     """)
 
 # --- DYNAMISCHE ZIJBALK LOGICA ---
@@ -43,8 +101,8 @@ else:
 
 # --- DATA INPUT (IN CONTAINER) ---
 with c_input:
-    st.header(f"{header_input}. Data Input" + (" (Ander Bestand)" if has_file else ""))
-    input_mode = st.radio("Input Type", ["Ruwe Aansluitingen (CSV)", "Reeds Geaggregeerd (CSV)"], key="input_mode")
+    st.header(f"{header_input}. Upload je data _" if not has_file else f"{header_input}. Ander bestand _")
+    input_mode = st.radio("Kies het type bestand", ["Ruwe Aansluitingen (CSV)", "Reeds Geaggregeerd (CSV)"], key="input_mode")
     uploaded_file = st.file_uploader("Upload CSV", type=["csv"], key="file_uploader_key")
 
 df_hedge = None
@@ -53,7 +111,7 @@ if uploaded_file is not None:
     if input_mode == "Ruwe Aansluitingen (CSV)":
         try:
             df_agg, mapping = process_raw_connections(uploaded_file)
-            with st.expander("ℹ️ Resultaat Analyse & Categorisatie", expanded=True):
+            with st.expander("Analyse afgerond _", expanded=True):
                 c1, c2, c3 = st.columns(3)
                 counts = pd.Series(mapping.values()).value_counts()
                 c1.metric("Consumers", counts.get('Consumer', 0))
@@ -65,7 +123,7 @@ if uploaded_file is not None:
             cols[0] = 'Date'
             df_hedge.columns = cols
         except Exception as e:
-            st.error(f"Fout bij verwerken ruwe data: {e}")
+            st.error(f"Er ging iets mis met het verwerken: {e}")
             st.stop()
     else: 
         try:
@@ -108,16 +166,16 @@ if df_hedge is not None:
     df['Quarter'] = df['Date'].dt.quarter
 
     with c_config:
-        st.header(f"{header_cfg}. Hedge Configuratie")
-        profile_choice = st.selectbox("Kies Profiel", ["Consumer", "Prosumer", "Producer", "Total"])
-        strategy_period = st.radio("Periode", ["Per Jaar", "Per Kwartaal"])
+        st.header(f"{header_cfg}. Jouw basisinstellingen _")
+        profile_choice = st.selectbox("Welk profiel bekijken we?", ["Consumer", "Prosumer", "Producer", "Total"])
+        strategy_period = st.radio("Contractperiode", ["Per Jaar", "Per Kwartaal"])
         
         # --- SCENARIO ANALYSE MULTIPLIERS ---
         st.markdown("---")
-        st.header(f"{header_cfg + 5}. Scenario Analyse (What-If)")
-        st.info("💡 Schaal het volume of shockeer de EPEX-prijzen om de robuustheid te testen.")
-        vol_multiplier = st.slider("Volume (Weer/Groei) Multiplier", min_value=-50, max_value=50, value=0, step=5, format="%d%%") / 100.0
-        epex_multiplier = st.slider("EPEX Spotmarkt Multiplier", min_value=-100, max_value=200, value=0, step=10, format="%d%%") / 100.0
+        st.header(f"{header_cfg + 5}. Speel met scenario's _")
+        st.info("Wat gebeurt er als we groeien of de markt draait? Test het hier.")
+        vol_multiplier = st.slider("Verwachte groei of meer/minder zon", min_value=-50, max_value=50, value=0, step=5, format="%d%%") / 100.0
+        epex_multiplier = st.slider("Schommeling spotprijzen (EPEX)", min_value=-100, max_value=200, value=0, step=10, format="%d%%") / 100.0
 
         p_mw_col = 'Active_Profile_MW'
         df[p_mw_col] = df[f'{profile_choice}_MW'] * (1 + vol_multiplier)
@@ -126,7 +184,7 @@ if df_hedge is not None:
 
         # --- STRATEGIE BLOK ---
         st.markdown("---")
-        st.header(f"{header_cfg + 1}. Kies Strategie")
+        st.header(f"{header_cfg + 1}. Kies je aanpak _")
 
         def apply_strategy(strat_name, custom_pct=None):
             periods = [0] if strategy_period == "Per Jaar" else [1, 2, 3, 4]
@@ -144,12 +202,12 @@ if df_hedge is not None:
             apply_strategy("custom_cov", custom_pct=st.session_state.custom_hedge_pct)
 
         col1, col2, col3 = st.columns(3)
-        if col1.button("🎯 Max 5% Sell"): apply_strategy("5%_sell")
-        if col2.button("📉 10% Hedge"): apply_strategy("10%_cov")
-        if col3.button("⚖️ 100% Hedge"): apply_strategy("100%_cov")
+        if col1.button("Max 5% overschot"): apply_strategy("5%_sell")
+        if col2.button("Subtiel (10%)"): apply_strategy("10%_cov")
+        if col3.button("Volledig afdekken"): apply_strategy("100%_cov")
 
         st.slider(
-            "% Hedge op Volume", 
+            "Bepaal je eigen dekking", 
             min_value=0, max_value=150, value=100, step=1, 
             key="custom_hedge_pct", 
             on_change=on_custom_hedge_change,
@@ -157,7 +215,7 @@ if df_hedge is not None:
 
         # --- Sliders MW (Fine-Tuning) ---
         st.markdown("---")
-        st.subheader(f"{header_cfg + 2}. Fine-tuning Volumes (MW)")
+        st.subheader(f"{header_cfg + 2}. Finetunen in MW _")
         
         df['Hedge_Base_MW'] = 0.0
         df['Hedge_Peak_MW'] = 0.0
@@ -197,7 +255,7 @@ if df_hedge is not None:
 
         # --- CONTRACTPRIJZEN BLOKKEN ---
         st.markdown("---")
-        st.subheader(f"{header_cfg + 3}. Contractprijzen (Inkoopblokken)")
+        st.subheader(f"{header_cfg + 3}. Jouw contractprijzen _")
         
         df['Price_Base'] = 0.0
         df['Price_Peak'] = 0.0
@@ -230,7 +288,7 @@ if df_hedge is not None:
         start_dt = df['Date'].min()
         end_dt = df['Date'].max()
         
-        with st.spinner("Prijzen downloaden via ENTSO-E API..."):
+        with st.spinner("We halen de actuele spotprijzen voor je op..."):
             df_epex = fetch_epex_prices(api_key, start_dt, end_dt)
         
         if isinstance(df_epex, str):
@@ -281,87 +339,92 @@ if df_hedge is not None:
     avg_cost = tot_energy_cost / denom if denom > 0 else 0
 
     # --- TABBLADEN STRUCTUUR (VISUALISATIES) ---
+    st.markdown("<br>", unsafe_allow_html=True)
     tab_main, tab_vol, tab_eco, tab_charts = st.tabs([
-        "📊 1. Hoofdoverzicht", 
-        "⚖️ 2. Volume Balans", 
-        "💡 3. Unit Economics", 
-        "📉 4. Detail Grafieken"
+        "Samenvatting", 
+        "Jouw volume", 
+        "Kengetallen", 
+        "Seizoenen"
     ])
 
-    # TAB 1: HOOFDOVERZICHT (Alleen de 3 belangrijkste KPI's + Cashflow)
+    # TAB 1: HOOFDOVERZICHT
     with tab_main:
-        st.markdown("### Belangrijkste Kengetallen")
+        st.markdown("### Helder overzicht _")
         m1, m2, m3 = st.columns(3)
         
         if avg_cost < 0:
-            m1.metric("Integrale Opbrengst (Winst)", f"€ {abs(avg_cost):.2f} / MWh", "Verdienste", delta_color="normal")
+            m1.metric("Jouw opbrengst (Winst)", f"€ {abs(avg_cost):.2f} / MWh", "Verdienmodel", delta_color="normal")
         else:
-            m1.metric("Integrale Kostprijs", f"€ {avg_cost:.2f} / MWh", "Kosten", delta_color="inverse")
+            m1.metric("Jouw kostprijs", f"€ {avg_cost:.2f} / MWh", "Kosten", delta_color="inverse")
             
-        cost_label = "Totale Verdienste (Netto)" if tot_energy_cost < 0 else "Totale Kosten (Netto)"
+        cost_label = "Totale verdienste (Netto)" if tot_energy_cost < 0 else "Totale kosten (Netto)"
         m2.metric(cost_label, f"€ {abs(tot_energy_cost):,.0f}")
-        m3.metric("Effectieve Dekking", f"{pct_hedge_eff:.1f}%")
+        m3.metric("Direct afgedekt", f"{pct_hedge_eff:.1f}%")
 
         st.markdown("---")
-        st.subheader("📉 Maandelijkse Cashflow en Kostenopbouw")
+        st.markdown("### De cijfers door het jaar heen _")
         
-        # Robuuste fix voor de Cashflow Chart
-        df['Month_Str'] = df['Date'].dt.strftime('%Y-%m') # Groepeer puur op tekst (Jaar-Maand) voorkomt Altair/Pandas bugs
-        monthly_df = df.groupby('Month_Str')[['Cost_Hedge_Total_EUR', 'Cost_Buy_EUR', 'Rev_Sell_EUR']].sum().reset_index()
+        # FIX VOOR DE CASHFLOW GRAFIEK (Robuuste Datetimes)
+        monthly_df = df.copy()
+        # Converteer naar vaste 1e dag van de maand datetimes voor Altair stabiliteit
+        monthly_df['Month_DT'] = monthly_df['Date'].dt.to_period('M').dt.to_timestamp()
         
-        # Zet verkopen negatief zodat ze onderaan de nullijn staven uitlijnen
-        monthly_df['Rev_Sell_EUR'] = -monthly_df['Rev_Sell_EUR'] 
+        monthly_agg = monthly_df.groupby('Month_DT')[['Cost_Hedge_Total_EUR', 'Cost_Buy_EUR', 'Rev_Sell_EUR']].sum().reset_index()
         
-        # Smelt dataset voor Altair gestapelde grafiek
-        monthly_melt = monthly_df.melt(id_vars=['Month_Str'], value_vars=['Cost_Hedge_Total_EUR', 'Cost_Buy_EUR', 'Rev_Sell_EUR'], var_name='Kostenpost', value_name='Euro')
+        # Zet verkopen negatief zodat ze onderaan de nullijn uitlijnen
+        monthly_agg['Rev_Sell_EUR'] = -monthly_agg['Rev_Sell_EUR'] 
+        
+        monthly_melt = monthly_agg.melt(id_vars=['Month_DT'], value_vars=['Cost_Hedge_Total_EUR', 'Cost_Buy_EUR', 'Rev_Sell_EUR'], var_name='Kostenpost', value_name='Euro')
+        
+        # Vriendelijke teksten
         monthly_melt['Kostenpost'] = monthly_melt['Kostenpost'].replace({
-            'Cost_Hedge_Total_EUR': '1. Vaste Inkoop (Blokken)',
-            'Cost_Buy_EUR': '2. Spot Inkoop (Tekort)',
-            'Rev_Sell_EUR': '3. Spot Verkoop (Overschot)'
+            'Cost_Hedge_Total_EUR': '1. Vaste inkoop',
+            'Cost_Buy_EUR': '2. Spot inkoop (tekort)',
+            'Rev_Sell_EUR': '3. Spot verkoop (overschot)'
         })
 
+        # Teken grafiek in Censo kleuren
         cashflow_chart = alt.Chart(monthly_melt).mark_bar().encode(
-            x=alt.X('Month_Str:N', title='Maand (Jaar-Maand)'),
+            x=alt.X('yearmonth(Month_DT):T', title='Maand'),
             y=alt.Y('sum(Euro):Q', title='Bedrag (€)', axis=alt.Axis(format='€s')),
             color=alt.Color('Kostenpost:N', 
                             scale=alt.Scale(
-                                domain=['1. Vaste Inkoop (Blokken)', '2. Spot Inkoop (Tekort)', '3. Spot Verkoop (Overschot)'],
-                                range=['#1f77b4', '#d62728', '#2ca02c']
-                            ), legend=alt.Legend(title="Kostenpost", orient="bottom")),
-            tooltip=[alt.Tooltip('Month_Str:N', title='Maand'), alt.Tooltip('Kostenpost:N'), alt.Tooltip('sum(Euro):Q', title='Bedrag', format='€,.0f')]
-        ).properties(height=380)
+                                domain=['1. Vaste inkoop', '2. Spot inkoop (tekort)', '3. Spot verkoop (overschot)'],
+                                range=['#000000', '#e8327c', '#fab517'] # Censo Black, Ruby, Gold
+                            ), legend=alt.Legend(title="", orient="bottom")),
+            tooltip=[alt.Tooltip('yearmonth(Month_DT):T', title='Maand'), alt.Tooltip('Kostenpost:N'), alt.Tooltip('sum(Euro):Q', title='Bedrag', format='€,.0f')]
+        ).properties(height=400)
         
         st.altair_chart(cashflow_chart, use_container_width=True)
 
-    # TAB 2: VOLUME BALANS (Visualisatie met Donut Chart)
+    # TAB 2: VOLUME BALANS (Visueel)
     with tab_vol:
-        st.markdown("### ⚖️ Volume Overzicht")
+        st.markdown("### Jouw verbruik in balans _")
         v1, v2, v3 = st.columns(3)
-        prof_label = "Totaal Opwek" if total_prof < 0 else "Totaal Verbruik"
+        prof_label = "Jouw totale opwek" if total_prof < 0 else "Jouw totale verbruik"
         v1.metric(prof_label, f"{total_prof_abs:,.0f} MWh")
-        v2.metric("Totaal Inkoopblokken", f"{total_hedge_abs:,.0f} MWh")
-        v3.metric("Effectieve Dekking", f"{pct_hedge_eff:.1f}%")
+        v2.metric("Ingekocht via blokken", f"{total_hedge_abs:,.0f} MWh")
+        v3.metric("Direct afgedekt", f"{pct_hedge_eff:.1f}%")
 
-        # Visualiseer volumes
-        st.markdown("#### Hoe wordt het volume ingevuld?")
+        st.markdown("<br><br><b>Hoe wordt jouw volume exact ingevuld?</b>", unsafe_allow_html=True)
         vol_data = pd.DataFrame({
-            'Categorie': ['Direct Gedekt (Effectief)', 'Spot Inkoop (Tekort)', 'Spot Verkoop (Overschot)'],
+            'Categorie': ['Direct afgedekt', 'Spot inkoop (tekort)', 'Spot verkoop (overschot)'],
             'MWh': [df['Used_Hedge_MWh_Abs'].sum(), total_under, total_over]
         })
         
         pie_chart = alt.Chart(vol_data).mark_arc(innerRadius=60).encode(
             theta=alt.Theta(field="MWh", type="quantitative"),
             color=alt.Color(field="Categorie", type="nominal", 
-                            scale=alt.Scale(domain=['Direct Gedekt (Effectief)', 'Spot Inkoop (Tekort)', 'Spot Verkoop (Overschot)'],
-                                            range=['#1f77b4', '#d62728', '#2ca02c'])),
+                            scale=alt.Scale(domain=['Direct afgedekt', 'Spot inkoop (tekort)', 'Spot verkoop (overschot)'],
+                                            range=['#fab517', '#e8327c', '#636363'])), # Gold, Ruby, Black-60
             tooltip=['Categorie', alt.Tooltip('MWh:Q', format=',.0f')]
-        ).properties(height=300)
+        ).properties(height=350)
         
         st.altair_chart(pie_chart, use_container_width=True)
 
     # TAB 3: UNIT ECONOMICS (Diepgaande KPI's)
     with tab_eco:
-        st.markdown("### 💡 Diepgaande Kengetallen (€/MWh)")
+        st.markdown("### De cijfers per MWh _")
         if not epex_loaded:
             st.info("Spotprijzen konden niet worden geladen. Sommige velden staan op €0.")
         
@@ -374,21 +437,22 @@ if df_hedge is not None:
         capture_diff = capture_price - avg_epex_base
 
         u1, u2 = st.columns(2)
-        u1.metric("Vaste Kosten per *Gedekte* MWh", f"€ {gem_vast_gebruikt:.2f}", help="De kosten van de inkoopblokken verdeeld over uitsluitend het volume dat je *daadwerkelijk* zelf hebt afgestreept (inclusief weggegooid overschot).")
-        u2.metric("Capture Price (Profielwaarde op Spot)", f"€ {capture_price:.2f}", f"€ {capture_diff:.2f} t.o.v. EPEX Base", delta_color="normal" if capture_diff > 0 else "inverse", help="De échte gemiddelde waarde van jouw stroomprofiel op de spotmarkt.")
+        u1.metric("Kosten per benutte MWh", f"€ {gem_vast_gebruikt:.2f}", help="De kosten van de inkoopblokken verdeeld over uitsluitend het volume dat je *daadwerkelijk* zelf hebt afgestreept (inclusief weggegooid overschot).")
+        u2.metric("Waarde van jouw profiel (Capture Price)", f"€ {capture_price:.2f}", f"€ {capture_diff:.2f} t.o.v. de markt", delta_color="normal" if capture_diff > 0 else "inverse", help="De échte gemiddelde waarde van jouw stroomprofiel op de spotmarkt.")
 
+        st.markdown("<br>", unsafe_allow_html=True)
         u3, u4 = st.columns(2)
-        u3.metric("Gem. Prijs Spot Inkoop (Tekorten)", f"€ {gem_spot_inkoop:.2f}")
-        u4.metric("Gem. Prijs Spot Verkoop (Overschot)", f"€ {gem_spot_verkoop:.2f}")
+        u3.metric("Wat betaalde je voor tekorten?", f"€ {gem_spot_inkoop:.2f}")
+        u4.metric("Wat leverde je overschot op?", f"€ {gem_spot_verkoop:.2f}")
 
     # TAB 4: DETAIL GRAFIEKEN & TABELLEN
     with tab_charts:
-        st.markdown("### 🔎 Seizoensanalyse (4 Representatieve Weken)")
+        st.markdown("### Seizoenen in de praktijk _")
         weeks = [
-            {"name": "Februari", "start": "2025-02-03", "end": "2025-02-09"},
-            {"name": "Mei",       "start": "2025-05-05", "end": "2025-05-11"},
-            {"name": "Augustus",  "start": "2025-08-04", "end": "2025-08-10"},
-            {"name": "November", "start": "2025-11-03", "end": "2025-11-09"}
+            {"name": "Typische winterweek", "start": "2025-02-03", "end": "2025-02-09"},
+            {"name": "Typische lenteweek",  "start": "2025-05-05", "end": "2025-05-11"},
+            {"name": "Typische zomerweek",  "start": "2025-08-04", "end": "2025-08-10"},
+            {"name": "Typische herfstweek", "start": "2025-11-03", "end": "2025-11-09"}
         ]
         cols_chart = st.columns(2) + st.columns(2)
         for i, week in enumerate(weeks):
@@ -399,34 +463,40 @@ if df_hedge is not None:
                     continue
                 mask = (df['Date'] >= week['start']) & (df['Date'] <= pd.Timestamp(week['end']) + pd.Timedelta(days=1))
                 chart_data = df.loc[mask].melt(id_vars=['Date'], value_vars=[p_mw_col, 'Current_Hedge_MW'], var_name='Type', value_name='MW')
-                chart_data['Type'] = chart_data['Type'].replace({p_mw_col: 'Verbruik / Opwek', 'Current_Hedge_MW': 'Hedge'})
+                chart_data['Type'] = chart_data['Type'].replace({p_mw_col: 'Jouw profiel', 'Current_Hedge_MW': 'Inkoopblok'})
+                
                 c = alt.Chart(chart_data).mark_line(interpolate='step-after').encode(
                     x=alt.X('Date:T', axis=alt.Axis(format='%a %H:%M', title=None)),
-                    y=alt.Y('MW:Q', title=None), color=alt.Color('Type:N', legend=alt.Legend(orient='bottom', title=None))
+                    y=alt.Y('MW:Q', title=None), 
+                    color=alt.Color('Type:N', 
+                                    scale=alt.Scale(domain=['Jouw profiel', 'Inkoopblok'], range=['#000000', '#fab517']),
+                                    legend=alt.Legend(orient='bottom', title=None))
                 ).properties(height=180)
                 st.altair_chart(c, use_container_width=True)
 
         st.markdown("---")
-        st.markdown("### 📊 Kwartaal Balans")
+        st.markdown("### Kwartaaloverzicht _")
         
         q_stats = df.groupby('Quarter').apply(lambda x: pd.Series({
             'Volume (MWh)': abs(x['Profile_MWh'].sum()),
-            'Dekking %': (x['Used_Hedge_MWh_Abs'].sum() / x['Profile_MWh'].abs().sum() * 100) if x['Profile_MWh'].sum() != 0 else 0,
-            'Spot Verkoop (MWh)': x['Over_Hedge_MWh'].sum(),
-            'Spot Inkoop (MWh)': x['Under_Hedge_MWh'].sum(),
-            'Netto Spot (€)': x['Net_Spot_EUR'].sum() if epex_loaded else 0,
-            'Totale Kosten (€)': (x['Cost_Hedge_Total_EUR'].sum() - x['Net_Spot_EUR'].sum()) if epex_loaded else x['Cost_Hedge_Total_EUR'].sum(),
-            'Integrale Prijs (€/MWh)': ((x['Cost_Hedge_Total_EUR'].sum() - x['Net_Spot_EUR'].sum()) / x['Profile_MWh'].abs().sum()) if epex_loaded and x['Profile_MWh'].sum() != 0 else (x['Cost_Hedge_Total_EUR'].sum() / x['Profile_MWh'].abs().sum() if x['Profile_MWh'].sum() != 0 else 0)
+            'Afgedekt (%)': (x['Used_Hedge_MWh_Abs'].sum() / x['Profile_MWh'].abs().sum() * 100) if x['Profile_MWh'].sum() != 0 else 0,
+            'Verkocht (MWh)': x['Over_Hedge_MWh'].sum(),
+            'Ingekocht (MWh)': x['Under_Hedge_MWh'].sum(),
+            'Spot resultaat (€)': x['Net_Spot_EUR'].sum() if epex_loaded else 0,
+            'Totale kosten (€)': (x['Cost_Hedge_Total_EUR'].sum() - x['Net_Spot_EUR'].sum()) if epex_loaded else x['Cost_Hedge_Total_EUR'].sum(),
+            'Jouw prijs (€/MWh)': ((x['Cost_Hedge_Total_EUR'].sum() - x['Net_Spot_EUR'].sum()) / x['Profile_MWh'].abs().sum()) if epex_loaded and x['Profile_MWh'].sum() != 0 else (x['Cost_Hedge_Total_EUR'].sum() / x['Profile_MWh'].abs().sum() if x['Profile_MWh'].sum() != 0 else 0)
         }))
 
         format_dict = {
-            'Volume (MWh)': "{:,.0f}", 'Dekking %': "{:.1f}%", 'Spot Verkoop (MWh)': "{:,.0f}", 'Spot Inkoop (MWh)': "{:,.0f}",
-            'Totale Kosten (€)': "€ {:,.0f}", 'Integrale Prijs (€/MWh)': "€ {:.2f}"
+            'Volume (MWh)': "{:,.0f}", 'Afgedekt (%)': "{:.1f}%", 'Verkocht (MWh)': "{:,.0f}", 'Ingekocht (MWh)': "{:,.0f}",
+            'Totale kosten (€)': "€ {:,.0f}", 'Jouw prijs (€/MWh)': "€ {:.2f}"
         }
-        if epex_loaded: format_dict.update({'Netto Spot (€)': "€ {:,.0f}"})
-        else: q_stats = q_stats.drop(columns=['Netto Spot (€)'])
+        if epex_loaded: format_dict.update({'Spot resultaat (€)': "€ {:,.0f}"})
+        else: q_stats = q_stats.drop(columns=['Spot resultaat (€)'])
 
         st.dataframe(q_stats.style.format(format_dict), use_container_width=True)
 
         csv_dl = df.to_csv(index=False).encode('utf-8')
-        st.download_button("📥 Download Detail Data (CSV)", csv_dl, "hedge_resultaten.csv", "text/csv")
+        st.download_button("Download je analyse (CSV)", csv_dl, "censo_analyse.csv", "text/csv")
+else:
+    st.info("Upload hiernaast een bestand om de magie te starten.")
