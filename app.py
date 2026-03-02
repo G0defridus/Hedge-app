@@ -12,6 +12,7 @@ from hedge_optimizer import find_optimal_mw
 # --- PAGINA INSTELLINGEN & CENSO HUISSTIJL (CSS) ---
 st.set_page_config(page_title="Censo Energy Optimizer", layout="wide")
 
+# CSS aangepast zodat het perfect werkt in zowel Light Mode als Dark Mode
 censo_css = """
 <style>
 @import url('https://fonts.googleapis.com/css2?family=Lexend+Deca:wght@400;500;700&family=Montserrat:ital,wght@1,400;1,500;1,700&display=swap');
@@ -26,21 +27,10 @@ h1, h2, h3, h4 {
     line-height: 1.1 !important;
 }
 
-/* Censo Meerkleurige Headline */
-.censo-title {
-    font-size: 2.8rem;
-    font-weight: 700;
-    color: #000000;
-    margin-bottom: 1rem;
-    margin-top: -1rem;
-}
-.censo-title .ruby { color: #e8327c; }
-.censo-title .gold { color: #fab517; }
-
 /* Knoppen in Censo Gold */
 .stButton>button {
     background-color: #fab517 !important;
-    color: #000000 !important;
+    color: #000000 !important; /* Tekst op de gouden knop altijd zwart */
     border: none !important;
     border-radius: 4px;
     font-weight: 500;
@@ -58,20 +48,22 @@ h1, h2, h3, h4 {
     white-space: pre-wrap;
     background-color: transparent;
     border-radius: 0px;
-    color: #636363;
     font-family: 'Lexend Deca', sans-serif;
     font-weight: 500;
 }
 .stTabs [aria-selected="true"] {
-    color: #000000 !important;
     border-bottom: 3px solid #e8327c !important; /* Ruby accent */
 }
 </style>
 """
 st.markdown(censo_css, unsafe_allow_html=True)
 
-# Meerkleurige Censo Headline (Black - Ruby - Gold underscore)
-st.markdown('<div class="censo-title">De energie-strategie. <span class="ruby">Maar dan simpel</span> <span class="gold">_</span></div>', unsafe_allow_html=True)
+# Meerkleurige Censo Headline (Werkt nu goed in Light én Dark mode)
+st.markdown("""
+<div style="font-size: 2.8rem; font-weight: 700; margin-bottom: 1rem; margin-top: -1rem; font-family: 'Lexend Deca', sans-serif;">
+    De energie-strategie. <span style="color: #e8327c;">Maar dan simpel</span> <span style="color: #fab517;">_</span>
+</div>
+""", unsafe_allow_html=True)
 
 # --- DOCUMENTATIE BLOK ---
 with st.expander("Hoe het werkt _", expanded=False):
@@ -364,35 +356,29 @@ if df_hedge is not None:
         st.markdown("---")
         st.markdown("### De cijfers door het jaar heen _")
         
-        # FIX VOOR DE CASHFLOW GRAFIEK (Robuuste Datetimes)
-        monthly_df = df.copy()
-        # Converteer naar vaste 1e dag van de maand datetimes voor Altair stabiliteit
-        monthly_df['Month_DT'] = monthly_df['Date'].dt.to_period('M').dt.to_timestamp()
+        # FIX CASHFLOW: Groepeer expliciet op een String (tekst) veld zodat Altair niet crasht met datetimes
+        df['Maand_Naam'] = df['Date'].dt.strftime('%Y-%m')
         
-        monthly_agg = monthly_df.groupby('Month_DT')[['Cost_Hedge_Total_EUR', 'Cost_Buy_EUR', 'Rev_Sell_EUR']].sum().reset_index()
-        
-        # Zet verkopen negatief zodat ze onderaan de nullijn uitlijnen
+        monthly_agg = df.groupby('Maand_Naam')[['Cost_Hedge_Total_EUR', 'Cost_Buy_EUR', 'Rev_Sell_EUR']].sum().reset_index()
         monthly_agg['Rev_Sell_EUR'] = -monthly_agg['Rev_Sell_EUR'] 
         
-        monthly_melt = monthly_agg.melt(id_vars=['Month_DT'], value_vars=['Cost_Hedge_Total_EUR', 'Cost_Buy_EUR', 'Rev_Sell_EUR'], var_name='Kostenpost', value_name='Euro')
+        monthly_melt = monthly_agg.melt(id_vars=['Maand_Naam'], value_vars=['Cost_Hedge_Total_EUR', 'Cost_Buy_EUR', 'Rev_Sell_EUR'], var_name='Kostenpost', value_name='Euro')
         
-        # Vriendelijke teksten
         monthly_melt['Kostenpost'] = monthly_melt['Kostenpost'].replace({
             'Cost_Hedge_Total_EUR': '1. Vaste inkoop',
             'Cost_Buy_EUR': '2. Spot inkoop (tekort)',
             'Rev_Sell_EUR': '3. Spot verkoop (overschot)'
         })
 
-        # Teken grafiek in Censo kleuren
         cashflow_chart = alt.Chart(monthly_melt).mark_bar().encode(
-            x=alt.X('yearmonth(Month_DT):T', title='Maand'),
+            x=alt.X('Maand_Naam:O', title='Maand (Jaar-Maand)'),  # :O is essentieel voor categorische x-as!
             y=alt.Y('sum(Euro):Q', title='Bedrag (€)', axis=alt.Axis(format='€s')),
             color=alt.Color('Kostenpost:N', 
                             scale=alt.Scale(
                                 domain=['1. Vaste inkoop', '2. Spot inkoop (tekort)', '3. Spot verkoop (overschot)'],
-                                range=['#000000', '#e8327c', '#fab517'] # Censo Black, Ruby, Gold
+                                range=['#9e9e9e', '#e8327c', '#fab517'] # Censo 40% Black, Ruby, Gold
                             ), legend=alt.Legend(title="", orient="bottom")),
-            tooltip=[alt.Tooltip('yearmonth(Month_DT):T', title='Maand'), alt.Tooltip('Kostenpost:N'), alt.Tooltip('sum(Euro):Q', title='Bedrag', format='€,.0f')]
+            tooltip=[alt.Tooltip('Maand_Naam:O', title='Maand'), alt.Tooltip('Kostenpost:N'), alt.Tooltip('sum(Euro):Q', title='Bedrag', format='€,.0f')]
         ).properties(height=400)
         
         st.altair_chart(cashflow_chart, use_container_width=True)
@@ -416,7 +402,7 @@ if df_hedge is not None:
             theta=alt.Theta(field="MWh", type="quantitative"),
             color=alt.Color(field="Categorie", type="nominal", 
                             scale=alt.Scale(domain=['Direct afgedekt', 'Spot inkoop (tekort)', 'Spot verkoop (overschot)'],
-                                            range=['#fab517', '#e8327c', '#636363'])), # Gold, Ruby, Black-60
+                                            range=['#fab517', '#e8327c', '#9e9e9e'])), # Gold, Ruby, 40% Black
             tooltip=['Categorie', alt.Tooltip('MWh:Q', format=',.0f')]
         ).properties(height=350)
         
@@ -459,17 +445,22 @@ if df_hedge is not None:
             with cols_chart[i]:
                 st.caption(week['name'])
                 if df['Date'].min() > pd.Timestamp(week['end']) or df['Date'].max() < pd.Timestamp(week['start']):
-                    st.info("Geen data")
+                    st.info("Geen data beschikbaar voor deze periode.")
                     continue
+                
+                # FIX SEIZOENSGRAFIEK: Geen vervanging van namen, maar hernoem vóór het smelten om Altair blij te maken
                 mask = (df['Date'] >= week['start']) & (df['Date'] <= pd.Timestamp(week['end']) + pd.Timedelta(days=1))
-                chart_data = df.loc[mask].melt(id_vars=['Date'], value_vars=[p_mw_col, 'Current_Hedge_MW'], var_name='Type', value_name='MW')
-                chart_data['Type'] = chart_data['Type'].replace({p_mw_col: 'Jouw profiel', 'Current_Hedge_MW': 'Inkoopblok'})
+                plot_df = df.loc[mask, ['Date', p_mw_col, 'Current_Hedge_MW']].rename(
+                    columns={p_mw_col: 'Jouw profiel', 'Current_Hedge_MW': 'Inkoopblok'}
+                )
+                
+                chart_data = plot_df.melt(id_vars=['Date'], var_name='Type', value_name='MW')
                 
                 c = alt.Chart(chart_data).mark_line(interpolate='step-after').encode(
                     x=alt.X('Date:T', axis=alt.Axis(format='%a %H:%M', title=None)),
                     y=alt.Y('MW:Q', title=None), 
                     color=alt.Color('Type:N', 
-                                    scale=alt.Scale(domain=['Jouw profiel', 'Inkoopblok'], range=['#000000', '#fab517']),
+                                    scale=alt.Scale(domain=['Jouw profiel', 'Inkoopblok'], range=['#808080', '#fab517']), # 50% Black & Gold
                                     legend=alt.Legend(orient='bottom', title=None))
                 ).properties(height=180)
                 st.altair_chart(c, use_container_width=True)
