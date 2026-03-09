@@ -1,8 +1,13 @@
 """
 Censo Energy Hedge Optimizer — Streamlit Orchestrator
 
+3-tab layout:
+  Tab 1: Data & Categorisatie — upload, configuratie, EPEX
+  Tab 2: Strategieën — vergelijkingstabel (3 producten × 4 optimalisaties)
+  Tab 3: Resultaten — finetuning + visualisaties
+
 Dunne coördinatielaag: alle businesslogica zit in core/,
-alle UI-componenten in ui/. Dit bestand plakt ze aan elkaar.
+alle UI-componenten in ui/.
 """
 
 import pandas as pd
@@ -14,12 +19,6 @@ from core.data_processor import (
     process_raw_connections,
 )
 from core.epex_client import fetch_epex_prices
-from core.financial import (
-    apply_hedge_columns,
-    compute_financial_summary,
-    compute_hedge_results,
-    compute_quarterly_table,
-)
 from core.models import DataLoadError, EPEXFetchError
 from ui import sidebar as ui_sidebar
 from ui import state as ui_state
@@ -60,36 +59,23 @@ ui_theme.render_how_it_works()
 ui_state.init_state()
 
 # ─────────────────────────────────────────────────────────────────────────
-# Dynamische zijbalk (upload boven als er nog geen bestand is)
+# Sidebar — alleen upload
 # ─────────────────────────────────────────────────────────────────────────
 
-has_file = st.session_state.get("file_uploader_key") is not None
-if has_file:
-    c_config = st.sidebar.container()
-    st.sidebar.markdown("---")
-    c_input = st.sidebar.container()
-else:
-    c_input = st.sidebar.container()
-    c_config = st.sidebar.container()
+uploaded_file, input_mode = ui_sidebar.render_upload_section()
 
 # ─────────────────────────────────────────────────────────────────────────
 # 1. Data inlezen
 # ─────────────────────────────────────────────────────────────────────────
 
-uploaded_file, input_mode = ui_sidebar.render_upload_section(c_input)
 df_hedge = None
+category_counts = None
 
 if uploaded_file is not None:
     if input_mode == "Ruwe Aansluitingen (CSV)":
         try:
             df_agg, mapping = _cached_process_raw(uploaded_file)
-            with st.expander("Analyse afgerond _", expanded=True):
-                c1, c2, c3 = st.columns(3)
-                counts = pd.Series(mapping.values()).value_counts()
-                c1.metric("Consumers", counts.get("Consumer", 0))
-                c2.metric("Prosumers", counts.get("Prosumer", 0))
-                c3.metric("Producers", counts.get("Producer", 0))
-
+            category_counts = pd.Series(mapping.values()).value_counts()
             df_hedge = df_agg.reset_index()
             cols = list(df_hedge.columns)
             cols[0] = "Date"
@@ -111,23 +97,41 @@ if uploaded_file is not None:
 if df_hedge is not None:
     df = prepare_dataframe(df_hedge)
 
-    # --- Basisinstellingen ---
-    profile_choice, strategy_period = ui_sidebar.render_settings(c_config)
+    # ─── 3 Hoofdtabs ─────────────────────────────────────────────────
+    st.markdown("<br>", unsafe_allow_html=True)
+    tab_data, tab_strat, tab_results = st.tabs(
+        ["📊 Data & Configuratie", "⚡ Strategieën", "💰 Resultaten"]
+    )
 
-    # --- Scenario's ---
-    vol_multiplier, epex_multiplier = ui_sidebar.render_scenarios(c_config)
+    # ─── Tab 1: Data & Configuratie ──────────────────────────────────
+    with tab_data:
+        # Categorisatie-overzicht
+        if category_counts is not None:
+            st.markdown("### Data-analyse _")
+            with st.expander("Categorisatie afgerond", expanded=True):
+                c1, c2, c3 = st.columns(3)
+                c1.metric("Consumers", category_counts.get("Consumer", 0))
+                c2.metric("Prosumers", category_counts.get("Prosumer", 0))
+                c3.metric("Producers", category_counts.get("Producer", 0))
+            st.markdown("---")
 
+        tab_config = ui_tabs.render_tab_data(df)
+        profile_choice = tab_config["profile_choice"]
+        strategy_period = tab_config["strategy_period"]
+        vol_multiplier = tab_config["vol_multiplier"]
+        epex_multiplier = tab_config["epex_multiplier"]
+        df = tab_config["df"]
+
+    # ─── Verrijking (tussen tabs, op basis van Tab 1 config) ─────────
+
+    # Actief profiel instellen
     p_mw_col = "Active_Profile_MW"
     df[p_mw_col] = df[f"{profile_choice}_MW"] * (1 + vol_multiplier)
 
-    # --- Contractprijzen ---
-    df = ui_sidebar.render_prices(c_config, df, strategy_period)
-
-    # --- EPEX ophalen ---
+    # EPEX ophalen (automatisch)
     epex_loaded = False
     if "ENTSOE_API_KEY" not in st.secrets:
-        with c_config:
-            st.error("⚠️ ENTSO-E API Key ontbreekt in .streamlit/secrets.toml")
+        st.sidebar.warning("⚠️ ENTSO-E API Key ontbreekt")
     else:
         try:
             df_epex = _cached_fetch_epex(
@@ -143,47 +147,29 @@ if df_hedge is not None:
             )
             epex_loaded = True
         except EPEXFetchError as e:
-            with c_config:
-                st.warning(f"EPEX-prijzen konden niet worden geladen: {e}")
+            st.sidebar.warning(f"EPEX niet geladen: {e}")
 
     if not epex_loaded:
         df["EPEX_EUR_MWh"] = 0.0
 
-    # --- Strategie knoppen ---
-    ui_sidebar.render_strategy_buttons(c_config, df, p_mw_col, strategy_period)
+    # EPEX status in sidebar
+    if epex_loaded:
+        st.sidebar.success("✓ EPEX spotprijzen geladen")
+    else:
+        st.sidebar.info("EPEX niet beschikbaar")
 
-    # --- Finetunen sliders ---
-    df = ui_sidebar.render_hedge_sliders(c_config, df, p_mw_col, strategy_period)
+    # ─── Tab 2: Strategieën ──────────────────────────────────────────
+    with tab_strat:
+        # Bepaal beschikbare categorieën
+        available_cats = [
+            c for c in ["Consumer", "Prosumer", "Producer"]
+            if f"{c}_MW" in df.columns
+        ]
+        ui_tabs.render_tab_strategies(df, available_cats, epex_loaded)
 
-    # ─────────────────────────────────────────────────────────────────────
-    # 3. Berekeningen (pure core functies)
-    # ─────────────────────────────────────────────────────────────────────
-
-    df = apply_hedge_columns(df, p_mw_col)
-    results = compute_hedge_results(df)
-    financial = compute_financial_summary(df, epex_loaded)
-    q_stats = compute_quarterly_table(df, epex_loaded)
-
-    # ─────────────────────────────────────────────────────────────────────
-    # 4. Visualisaties
-    # ─────────────────────────────────────────────────────────────────────
-
-    st.markdown("<br>", unsafe_allow_html=True)
-    tab_main, tab_vol, tab_eco, tab_charts = st.tabs(
-        ["Samenvatting", "Jouw volume flow", "Kengetallen", "Seizoenen"]
-    )
-
-    with tab_main:
-        ui_tabs.render_summary_tab(df, financial, results)
-
-    with tab_vol:
-        ui_tabs.render_volume_tab(df, results)
-
-    with tab_eco:
-        ui_tabs.render_economics_tab(financial, epex_loaded)
-
-    with tab_charts:
-        ui_tabs.render_seasonal_tab(df, p_mw_col, q_stats, epex_loaded)
+    # ─── Tab 3: Resultaten ───────────────────────────────────────────
+    with tab_results:
+        ui_tabs.render_tab_results(df, p_mw_col, strategy_period, epex_loaded)
 
 else:
     st.info("Upload hiernaast een bestand om de magie te starten.")

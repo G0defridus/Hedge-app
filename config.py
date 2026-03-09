@@ -82,3 +82,27 @@ PROFILE_CHOICES = ["Consumer", "Prosumer", "Producer", "Total"]
 # Date-kolom aliassen bij inlezen
 # ---------------------------------------------------------------------------
 DATE_COLUMN_ALIASES = ["Datum", "Tijd", "Time", "date", "time"]
+
+# ---------------------------------------------------------------------------
+# Verkoopproducten (3 varianten)
+# ---------------------------------------------------------------------------
+PRODUCTS = [
+    {"key": "max_zekerheid", "label": "Max Zekerheid", "desc": "Hedge zoveel mogelijk"},
+    {"key": "min_hedge",     "label": "Minimale Hedge", "desc": "~10% volume"},
+    {"key": "flex",          "label": "Volledig Flex",   "desc": "0% hedge, 100% spot"},
+]
+
+MIN_HEDGE_VOLUME_PCT = 10  # Doelpercentage voor "Minimale Hedge"
+
+# ---------------------------------------------------------------------------
+# Optimalisatie-strategieën (4 opties)
+# ---------------------------------------------------------------------------
+OPTIMIZATIONS = [
+    {"key": "least_cost", "label": "Laagste kosten"},
+    {"key": "value_risk", "label": "Minste risico"},
+    {"key": "max_5pct",   "label": "Max 5% ENDEX verkoop"},
+    {"key": "100vol",     "label": "100% volume hedge"},
+]
+
+# Categorieën voor de vergelijkingstabel (zonder 'Total')
+CATEGORY_CHOICES = ["Consumer", "Prosumer", "Producer"]

@@ -89,3 +89,26 @@ class EPEXFetchError(Exception):
 
 class PricingError(Exception):
     """Fout bij het laden van contractprijzen."""
+
+
+# ---------------------------------------------------------------------------
+# Scenario-vergelijking (3 producten × 4 optimalisaties)
+# ---------------------------------------------------------------------------
+@dataclass
+class ScenarioResult:
+    """Resultaat van één product × optimalisatie combinatie."""
+
+    product: str          # "max_zekerheid" | "min_hedge" | "flex"
+    optimization: str     # "least_cost" | "value_risk" | "max_5pct" | "100vol"
+    position: HedgePosition = field(default_factory=HedgePosition)
+    results: HedgeResults = field(default_factory=HedgeResults)
+    financial: FinancialSummary = field(default_factory=FinancialSummary)
+    applicable: bool = True   # False voor n.v.t. cellen
+
+
+@dataclass
+class CategoryScenarios:
+    """Alle scenario's voor één categorie (Consumer/Prosumer/Producer)."""
+
+    category: str
+    scenarios: list[ScenarioResult] = field(default_factory=list)

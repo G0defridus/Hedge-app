@@ -47,6 +47,48 @@ h1, h2, h3, h4 {{
     font-weight: 500;
 }}
 .stTabs [aria-selected="true"] {{ border-bottom: 3px solid {cfg.COLORS['ruby']} !important; }}
+
+/* ─── Vergelijkingstabel cellen ─── */
+div[data-testid="stVerticalBlock"] .scenario-cell {{
+    border: 2px solid #e0e0e0;
+    border-radius: 8px;
+    padding: 1rem;
+    text-align: center;
+    transition: border-color 0.2s, box-shadow 0.2s;
+    background: {cfg.COLORS['white']};
+    min-height: 120px;
+}}
+div[data-testid="stVerticalBlock"] .scenario-cell:hover {{
+    border-color: {cfg.COLORS['gold']};
+    box-shadow: 0 2px 8px rgba(250, 181, 23, 0.25);
+}}
+div[data-testid="stVerticalBlock"] .scenario-cell.selected {{
+    border-color: {cfg.COLORS['gold']};
+    box-shadow: 0 0 0 2px {cfg.COLORS['gold']};
+}}
+div[data-testid="stVerticalBlock"] .scenario-cell.not-applicable {{
+    opacity: 0.45;
+    pointer-events: none;
+}}
+.scenario-cell .cell-price {{
+    font-size: 1.4rem;
+    font-weight: 700;
+    color: {cfg.COLORS['black']};
+    margin: 0.2rem 0;
+}}
+.scenario-cell .cell-hedge {{
+    font-size: 0.95rem;
+    color: {cfg.COLORS['dark_grey']};
+}}
+.scenario-cell .cell-label {{
+    font-size: 0.8rem;
+    color: {cfg.COLORS['grey']};
+    margin-top: 0.3rem;
+}}
+/* Streepje onder categorie sub-tabs */
+.stTabs .stTabs [aria-selected="true"] {{
+    border-bottom-color: {cfg.COLORS['gold']} !important;
+}}
 </style>
 """
 
