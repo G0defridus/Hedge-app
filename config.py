@@ -87,9 +87,12 @@ DATE_COLUMN_ALIASES = ["Datum", "Tijd", "Time", "date", "time"]
 # Verkoopproducten (3 varianten)
 # ---------------------------------------------------------------------------
 PRODUCTS = [
-    {"key": "max_zekerheid", "label": "Max Zekerheid", "desc": "Hedge zoveel mogelijk"},
-    {"key": "min_hedge",     "label": "Minimale Hedge", "desc": "~10% volume"},
-    {"key": "flex",          "label": "Volledig Flex",   "desc": "0% hedge, 100% spot"},
+    {"key": "max_zekerheid", "label": "Max Zekerheid",
+     "desc": "Koop zoveel mogelijk in via vaste ENDEX-blokken"},
+    {"key": "min_hedge", "label": "Minimale Hedge",
+     "desc": "Dek slechts ~10% van je volume af, rest via spot"},
+    {"key": "flex", "label": "Volledig Flex",
+     "desc": "Geen vaste inkoop — 100% op de spotmarkt"},
 ]
 
 MIN_HEDGE_VOLUME_PCT = 10  # Doelpercentage voor "Minimale Hedge"
@@ -98,10 +101,18 @@ MIN_HEDGE_VOLUME_PCT = 10  # Doelpercentage voor "Minimale Hedge"
 # Optimalisatie-strategieën (4 opties)
 # ---------------------------------------------------------------------------
 OPTIMIZATIONS = [
-    {"key": "least_cost", "label": "Laagste kosten"},
-    {"key": "value_risk", "label": "Minste risico"},
-    {"key": "max_5pct",   "label": "Max 5% ENDEX verkoop"},
-    {"key": "100vol",     "label": "100% volume hedge"},
+    {"key": "least_cost",
+     "label": "Laagste kosten",
+     "desc": "Test 1.600 combinaties en kiest de goedkoopste mix van vaste inkoop + spotmarkt."},
+    {"key": "value_risk",
+     "label": "Value Hedge",
+     "desc": "Weegt je inkoop naar prijsniveau: meer MW in dure uren, minder in goedkope. Elimineert spotexposure bij 100% dekking."},
+    {"key": "max_5pct",
+     "label": "Max 5% ENDEX verkoop",
+     "desc": "Koop zoveel mogelijk in, maar maximaal 5% terugverkopen op de spotmarkt."},
+    {"key": "100vol",
+     "label": "100% volume",
+     "desc": "Dek het gemiddelde profiel exact af: Base = off-peak gemiddelde, Peak = piekgemiddelde."},
 ]
 
 # Categorieën voor de vergelijkingstabel (zonder 'Total')

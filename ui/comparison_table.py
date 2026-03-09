@@ -97,6 +97,8 @@ def render_comparison_table(cat_scenarios: CategoryScenarios) -> None:
     for opt in cfg.OPTIMIZATIONS:
         row_cols = st.columns([1.5] + [1] * len(cfg.PRODUCTS))
         row_cols[0].markdown(f"**{opt['label']}**")
+        if opt.get("desc"):
+            row_cols[0].caption(opt["desc"])
 
         for j, prod in enumerate(cfg.PRODUCTS):
             scenario = get_scenario(cat_scenarios, prod["key"], opt["key"])

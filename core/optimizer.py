@@ -1,9 +1,10 @@
 """
 Hedge-optimalisatie strategieën.
 
-Twee benaderingen:
-  1. Volume-gebaseerd  → find_optimal_position()
-  2. Financieel         → optimize_financial()
+Drie benaderingen:
+  1. Volume-gebaseerd     → find_optimal_position()
+  2. Financieel (kosten)  → optimize_financial()
+  3. Value Hedge (prijs)  → compute_value_hedge()
 
 Geen Streamlit-afhankelijkheden.
 """
@@ -104,6 +105,65 @@ def find_optimal_position(
 
 
 # ═══════════════════════════════════════════════════════════════════════════
+# Publieke API — Value Hedge (prijsgewogen)
+# ═══════════════════════════════════════════════════════════════════════════
+
+def compute_value_hedge(
+    sub_df: pd.DataFrame,
+    profile_col: str,
+) -> HedgePosition:
+    """Bereken de value hedge: prijsgewogen gemiddelde vraag per blok.
+
+    Duurde uren krijgen méér hedge, goedkope uren minder.
+    Bij 100% dekking elimineert dit de spotexposure volledig
+    (zolang de prijsvorm gelijk blijft).
+
+    Formule per blok::
+
+        block_MW = Σ(demand × prijs) / Σ(prijs)
+
+    Parameters
+    ----------
+    sub_df : DataFrame
+        Bevat ``profile_col``, ``is_peak`` en ``EPEX_EUR_MWh``.
+    profile_col : str
+        Naam van de actieve profiel-MW kolom.
+
+    Returns
+    -------
+    HedgePosition
+    """
+    # Geen EPEX-data? Val terug op 100% volume
+    if "EPEX_EUR_MWh" not in sub_df.columns or sub_df["EPEX_EUR_MWh"].sum() == 0:
+        return find_optimal_position(sub_df, profile_col, percent_volume_target=100)
+
+    offpeak = sub_df[~sub_df["is_peak"]]
+    peak = sub_df[sub_df["is_peak"]]
+
+    # Prijsgewogen gemiddelde vraag per blok
+    op_price_sum = offpeak["EPEX_EUR_MWh"].sum()
+    base_mw = (
+        (offpeak[profile_col] * offpeak["EPEX_EUR_MWh"]).sum() / op_price_sum
+        if op_price_sum != 0
+        else offpeak[profile_col].mean()
+    )
+
+    pk_price_sum = peak["EPEX_EUR_MWh"].sum()
+    peak_total_mw = (
+        (peak[profile_col] * peak["EPEX_EUR_MWh"]).sum() / pk_price_sum
+        if pk_price_sum != 0
+        else peak[profile_col].mean()
+    )
+
+    peak_add_mw = peak_total_mw - base_mw
+
+    return HedgePosition(
+        base_mw=round(base_mw, 1),
+        peak_add_mw=round(peak_add_mw, 1),
+    )
+
+
+# ═══════════════════════════════════════════════════════════════════════════
 # Publieke API — Financieel (Grid Search)
 # ═══════════════════════════════════════════════════════════════════════════
 
@@ -126,7 +186,6 @@ def optimize_financial(
         Contractprijzen in €/MWh.
     strategy : str
         ``"least_cost"`` → minimaliseer totale kosten.
-        ``"value_risk"`` → minimaliseer variantie (schommelingen).
 
     Returns
     -------
@@ -171,17 +230,9 @@ def optimize_financial(
             is_peak * p * cfg.MWH_FACTOR * price_peak
         )
 
-        if strategy == "least_cost":
-            total_cost = np.sum(hedge_cost_hourly) + spot_cost
-            if total_cost < best_val:
-                best_val = total_cost
-                best_b, best_p = b, p
-
-        elif strategy == "value_risk":
-            hourly_cost = hedge_cost_hourly + (under * epex) - (over * epex)
-            var_cost = np.var(hourly_cost)
-            if var_cost < best_val:
-                best_val = var_cost
-                best_b, best_p = b, p
+        total_cost = np.sum(hedge_cost_hourly) + spot_cost
+        if total_cost < best_val:
+            best_val = total_cost
+            best_b, best_p = b, p
 
     return HedgePosition(base_mw=round(best_b, 1), peak_add_mw=round(best_p, 1))

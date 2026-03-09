@@ -26,7 +26,7 @@ from core.models import (
     HedgeResults,
     ScenarioResult,
 )
-from core.optimizer import find_optimal_position, optimize_financial
+from core.optimizer import compute_value_hedge, find_optimal_position, optimize_financial
 
 
 # ═══════════════════════════════════════════════════════════════════════════
@@ -61,7 +61,7 @@ def _compute_position(
     if optimization == "least_cost":
         return optimize_financial(sub_df, profile_col, price_base, price_peak, "least_cost"), True
     elif optimization == "value_risk":
-        return optimize_financial(sub_df, profile_col, price_base, price_peak, "value_risk"), True
+        return compute_value_hedge(sub_df, profile_col), True
     elif optimization == "max_5pct":
         return find_optimal_position(sub_df, profile_col, target_over_pct_limit=5.0), True
     elif optimization == "100vol":
