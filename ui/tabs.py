@@ -1,9 +1,7 @@
 """
-Tab renderers — 3 hoofdtabs + 4 resultaat-subtabs.
+Resultaat-renderers — standalone functies voor de resultaten-sectie.
 
-Tab 1: Data & Categorisatie
-Tab 2: Strategieën (vergelijkingstabel)
-Tab 3: Resultaten (finetuning + visualisaties)
+render_seasonal_preview() kan ook standalone worden aangeroepen (100% SPOT baseline).
 """
 
 from __future__ import annotations
@@ -20,220 +18,193 @@ from core.financial import (
     compute_hedge_results,
     compute_quarterly_table,
 )
-from core.models import FinancialSummary, HedgePosition, HedgeResults
+from core.excel_export import build_export_workbook
+from core.models import FinancialSummary, HedgeResults
 from core.optimizer import find_optimal_position
-from core.pricing import get_default_price
-from core.scenario_engine import compute_all_scenarios
 from ui import state as ui_state
-from ui.comparison_table import render_comparison_table
-from ui.theme import censo_color_scale, QUARTERLY_FORMAT
+from ui.theme import QUARTERLY_FORMAT
 
 
 # ═══════════════════════════════════════════════════════════════════════════
-# Tab 1: Data & Categorisatie
+# Seizoensgrafieken + kwartaaltabel (standalone, vóór selectie)
 # ═══════════════════════════════════════════════════════════════════════════
 
-def render_tab_data(df: pd.DataFrame) -> dict:
-    """Configuratie-tab: profiel, prijzen, scenario's.
-
-    Returns
-    -------
-    dict met keys: profile_choice, strategy_period, vol_multiplier,
-                   epex_multiplier, df (verrijkt met prijzen + scenario-sliders)
-    """
-    st.markdown("### Configureer je analyse _")
-
-    # --- Profiel & Periode ---
-    col_prof, col_period = st.columns(2)
-    with col_prof:
-        profile_choice = st.selectbox(
-            "Welk profiel bekijken we?", cfg.PROFILE_CHOICES
-        )
-    with col_period:
-        strategy_period = st.radio(
-            "Contractperiode", ["Per Jaar", "Per Kwartaal"], horizontal=True
-        )
-
-    st.markdown("---")
-
-    # --- Contractprijzen ---
-    st.markdown("#### Contractprijzen _")
-    df = df.copy()
-    df["Price_Base"] = 0.0
-    df["Price_Peak"] = 0.0
-
-    if strategy_period == "Per Jaar":
-        cp1, cp2 = st.columns(2)
-        def_b, def_p = get_default_price("Jaar")
-        pr_b = cp1.number_input("Base Prijs (€/MWh)", value=def_b, step=1.0)
-        pr_p = cp2.number_input("Peak Prijs (€/MWh)", value=def_p, step=1.0)
-        df["Price_Base"] = pr_b
-        df["Price_Peak"] = pr_p
-    else:
-        price_cols = st.columns(4)
-        for idx, q in enumerate([1, 2, 3, 4]):
-            with price_cols[idx]:
-                st.markdown(f"**Q{q}**")
-                def_b, def_p = get_default_price("Kwartaal", q)
-                pr_b = st.number_input(
-                    f"Base", value=def_b, step=1.0, key=f"pr_b_q{q}"
-                )
-                pr_p = st.number_input(
-                    f"Peak", value=def_p, step=1.0, key=f"pr_p_q{q}"
-                )
-                q_mask = df["Quarter"] == q
-                df.loc[q_mask, "Price_Base"] = pr_b
-                df.loc[q_mask, "Price_Peak"] = pr_p
-
-    st.markdown("---")
-
-    # --- Scenario-sliders ---
-    st.markdown("#### Speel met scenario's _")
-    sc1, sc2 = st.columns(2)
-    with sc1:
-        vol_pct = st.slider(
-            "Verwachte groei of zon",
-            min_value=-50, max_value=50, value=0, step=5, format="%d%%",
-        )
-    with sc2:
-        epex_pct = st.slider(
-            "Spotprijzen (EPEX)",
-            min_value=-100, max_value=200, value=0, step=10, format="%d%%",
-        )
-
-    return {
-        "profile_choice": profile_choice,
-        "strategy_period": strategy_period,
-        "vol_multiplier": vol_pct / 100.0,
-        "epex_multiplier": epex_pct / 100.0,
-        "df": df,
-    }
-
-
-# ═══════════════════════════════════════════════════════════════════════════
-# Tab 2: Strategieën
-# ═══════════════════════════════════════════════════════════════════════════
-
-def render_tab_strategies(
+def render_seasonal_preview(
     df: pd.DataFrame,
-    available_categories: list[str],
-    epex_loaded: bool,
+    p_mw_col: str,
+    q_stats: pd.DataFrame,
+    *,
+    has_hedge: bool = False,
 ) -> None:
-    """Vergelijkingstabel per categorie — het middelpunt van de app."""
-    st.markdown("### Vergelijk strategieën _")
-    st.info(
-        "Hieronder zie je per categorie alle combinaties van inkoopproducten "
-        "en optimalisatiestrategieën. Klik **Selecteer** om een strategie "
-        "over te nemen naar het Resultaten-tabblad."
-    )
+    """Seizoensgrafieken + kwartaaltabel.
 
-    if not available_categories:
-        st.warning("Geen categorieën beschikbaar. Upload data in Tab 1.")
-        return
+    Parameters
+    ----------
+    df : DataFrame
+        Het DataFrame met profiel en (optioneel) hedge-kolommen.
+    p_mw_col : str
+        Kolomnaam voor het actieve profiel in MW.
+    q_stats : DataFrame
+        Output van ``compute_quarterly_table()``.
+    has_hedge : bool
+        Als True, toon ook de hedge-overlay in de grafieken.
+    """
+    st.markdown("### Seizoenen in de praktijk _")
 
-    cat_tabs = st.tabs(available_categories)
+    data_year = df["Date"].dt.year.mode().iloc[0]
 
-    for i, category in enumerate(available_categories):
-        with cat_tabs[i]:
-            # Haal gemiddelde prijzen voor de compute
-            price_base = df["Price_Base"].mean()
-            price_peak = df["Price_Peak"].mean()
+    cols_chart = st.columns(2) + st.columns(2)
 
-            with st.spinner(f"Scenario's berekenen voor {category}..."):
-                cat_scenarios = compute_all_scenarios(
-                    df, category, price_base, price_peak, epex_loaded,
+    for i, week_cfg in enumerate(cfg.SEASONAL_WEEKS):
+        with cols_chart[i]:
+            st.caption(week_cfg["name"])
+
+            try:
+                week_start = pd.Timestamp.fromisocalendar(
+                    data_year, week_cfg["iso_week"], 1
                 )
+                week_end = week_start + pd.Timedelta(days=6)
+            except (ValueError, AttributeError):
+                st.info("Kan weekdatum niet bepalen.")
+                continue
 
-            render_comparison_table(cat_scenarios)
+            if df["Date"].min() > week_end or df["Date"].max() < week_start:
+                st.info("Geen data beschikbaar voor deze periode.")
+                continue
+
+            mask = (df["Date"] >= week_start) & (
+                df["Date"] <= week_end + pd.Timedelta(days=1)
+            )
+
+            if has_hedge and "Current_Hedge_MW" in df.columns:
+                plot_df = df.loc[mask, ["Date", p_mw_col, "Current_Hedge_MW"]].copy()
+                plot_df.rename(
+                    columns={p_mw_col: "Jouw profiel", "Current_Hedge_MW": "Inkoopblok"},
+                    inplace=True,
+                )
+                domain = ["Jouw profiel", "Inkoopblok"]
+                colors = [cfg.COLORS["dark_grey"], cfg.COLORS["gold"]]
+            else:
+                plot_df = df.loc[mask, ["Date", p_mw_col]].copy()
+                plot_df.rename(columns={p_mw_col: "Jouw profiel"}, inplace=True)
+                domain = ["Jouw profiel"]
+                colors = [cfg.COLORS["dark_grey"]]
+
+            chart_data = plot_df.melt(
+                id_vars=["Date"], var_name="Type", value_name="MW"
+            )
+            c = (
+                alt.Chart(chart_data)
+                .mark_line(interpolate="step-after")
+                .encode(
+                    x=alt.X(
+                        "Date:T",
+                        axis=alt.Axis(format="%a %H:%M", title=None),
+                    ),
+                    y=alt.Y("MW:Q", title=None),
+                    color=alt.Color(
+                        "Type:N",
+                        scale=alt.Scale(domain=domain, range=colors),
+                        legend=alt.Legend(orient="bottom", title=None),
+                    ),
+                )
+                .properties(height=180)
+            )
+            st.altair_chart(c, use_container_width=True)
+
+    # --- Kwartaaloverzicht ---
+    st.markdown("---")
+    st.markdown("### Kwartaaloverzicht _")
+
+    format_dict = {k: v for k, v in QUARTERLY_FORMAT.items() if k in q_stats.columns}
+    st.dataframe(q_stats.style.format(format_dict), use_container_width=True)
 
 
 # ═══════════════════════════════════════════════════════════════════════════
-# Tab 3: Resultaten
+# Hoofdfunctie — rendert de volledige resultaten-sectie (na selectie)
 # ═══════════════════════════════════════════════════════════════════════════
 
-def render_tab_results(
+def render_results_section(
     df: pd.DataFrame,
     p_mw_col: str,
     strategy_period: str,
     epex_loaded: bool,
 ) -> None:
-    """Resultaten-tab: finetuning sliders + 4 sub-tabs met visualisaties."""
+    """Render de complete resultaten-sectie onder de optimalisatie-kaarten."""
+    render_selection_info()
 
-    # --- Finetuning sliders ---
-    st.markdown("### Finetunen _")
+    df = render_hedge_sliders(df, p_mw_col, strategy_period)
 
-    sel_info = _render_selection_info()
-
-    df = _render_hedge_sliders(df, p_mw_col, strategy_period)
-
-    # --- Berekeningen ---
+    # Berekeningen
     df = apply_hedge_columns(df, p_mw_col)
     results = compute_hedge_results(df)
     financial = compute_financial_summary(df, epex_loaded)
     q_stats = compute_quarterly_table(df, epex_loaded)
 
-    # --- 4 Sub-tabs ---
+    # Seizoensgrafieken met hedge-overlay
+    render_seasonal_preview(df, p_mw_col, q_stats, has_hedge=True)
+
+    # Excel download
+    selected = st.session_state.get("selected_scenarios", {})
+    category = next(iter(selected), "")
+    sel = selected.get(category, {})
+    optimization_key = sel.get("optimization", "")
+
+    excel_buf = build_export_workbook(
+        df, category, optimization_key,
+        strategy_period, epex_loaded, q_stats,
+    )
+    st.download_button(
+        "Download berekening (Excel)",
+        excel_buf,
+        "censo_hedge_berekening.xlsx",
+        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    )
+
+    # 3 Sub-tabs
     st.markdown("---")
-    tab_main, tab_vol, tab_eco, tab_charts = st.tabs(
-        ["Samenvatting", "Jouw volume flow", "Kengetallen", "Seizoenen"]
+    tab_main, tab_vol, tab_eco = st.tabs(
+        ["Samenvatting", "Jouw volume flow", "Kengetallen"]
     )
 
     with tab_main:
-        _render_summary_subtab(df, financial, results)
+        render_summary(df, financial, results)
 
     with tab_vol:
-        _render_volume_subtab(df, results)
+        render_volume_flow(df, results)
 
     with tab_eco:
-        _render_economics_subtab(financial, epex_loaded)
-
-    with tab_charts:
-        _render_seasonal_subtab(df, p_mw_col, q_stats, epex_loaded)
+        render_economics(financial, epex_loaded)
 
 
-# ---------------------------------------------------------------------------
-# Helpers voor Tab 3
-# ---------------------------------------------------------------------------
+# ═══════════════════════════════════════════════════════════════════════════
+# Selectie-info
+# ═══════════════════════════════════════════════════════════════════════════
 
-def _render_selection_info() -> None:
-    """Toon welk scenario geselecteerd is (vanuit Tab 2)."""
+def render_selection_info() -> None:
+    """Toon welk scenario geselecteerd is."""
     selected = st.session_state.get("selected_scenarios", {})
     if selected:
         for cat, sel in selected.items():
-            prod_label = next(
-                (p["label"] for p in cfg.PRODUCTS if p["key"] == sel["product"]),
-                sel["product"],
-            )
             opt_label = next(
                 (o["label"] for o in cfg.OPTIMIZATIONS if o["key"] == sel["optimization"]),
                 sel["optimization"],
             )
-            st.success(
-                f"**{cat}**: {prod_label} — {opt_label} "
-                f"(vanuit Strategieën-tab)"
-            )
-    else:
-        st.info(
-            "Selecteer een strategie in de Strategieën-tab, "
-            "of pas de sliders hieronder handmatig aan."
-        )
+            st.success(f"**{cat}**: {opt_label}")
 
 
-def _build_periods(
-    df: pd.DataFrame, strategy_period: str
-) -> list[tuple[int | None, pd.DataFrame]]:
-    """Bouw lijst van (quarter, sub_df) tuples."""
-    if strategy_period == "Per Jaar":
-        return [(None, df)]
-    return [(q, df[df["Quarter"] == q]) for q in [1, 2, 3, 4]]
+# ═══════════════════════════════════════════════════════════════════════════
+# Finetuning sliders
+# ═══════════════════════════════════════════════════════════════════════════
 
-
-def _render_hedge_sliders(
+def render_hedge_sliders(
     df: pd.DataFrame,
     p_mw_col: str,
     strategy_period: str,
 ) -> pd.DataFrame:
-    """Toon de Base/Peak MW sliders en schrijf hedge-kolommen naar het DataFrame."""
+    """Toon Base/Peak MW sliders en schrijf hedge-kolommen naar het DataFrame."""
+    st.markdown("### Finetunen _")
+
     df = df.copy()
     df["Hedge_Base_MW"] = 0.0
     df["Hedge_Peak_MW"] = 0.0
@@ -289,11 +260,20 @@ def _render_hedge_sliders(
     return df
 
 
+def _build_periods(
+    df: pd.DataFrame, strategy_period: str
+) -> list[tuple[int | None, pd.DataFrame]]:
+    """Bouw lijst van (quarter, sub_df) tuples."""
+    if strategy_period == "Per Jaar":
+        return [(None, df)]
+    return [(q, df[df["Quarter"] == q]) for q in [1, 2, 3, 4]]
+
+
 # ═══════════════════════════════════════════════════════════════════════════
-# Sub-tab renderers (bestaande logica, verplaatst)
+# Samenvatting
 # ═══════════════════════════════════════════════════════════════════════════
 
-def _render_summary_subtab(
+def render_summary(
     df: pd.DataFrame,
     financial: FinancialSummary,
     results: HedgeResults,
@@ -379,11 +359,15 @@ def _render_summary_subtab(
     st.altair_chart(chart, use_container_width=True)
 
 
-def _render_volume_subtab(
+# ═══════════════════════════════════════════════════════════════════════════
+# Volume flow (watervalgrafiek)
+# ═══════════════════════════════════════════════════════════════════════════
+
+def render_volume_flow(
     df: pd.DataFrame,
     results: HedgeResults,
 ) -> None:
-    """Watervalgrafiek: profiel → hedge → spotmarkt → balans."""
+    """Watervalgrafiek: profiel -> hedge -> spotmarkt -> balans."""
     st.markdown("### Jouw verbruik in balans _")
 
     total_prof_abs = abs(results.profile_mwh)
@@ -398,7 +382,7 @@ def _render_volume_subtab(
 
     st.markdown("<br><br><b>De flow van jouw stroom _</b>", unsafe_allow_html=True)
     st.info(
-        "Een échte watervalgrafiek: we starten met de totale behoefte, "
+        "Een watervalgrafiek: we starten met de totale behoefte, "
         "trekken de ingekochte blokken eraf, en het restant werk je weg "
         "op de spotmarkt zodat we precies op 0 (balans) uitkomen."
     )
@@ -468,7 +452,7 @@ def _render_volume_subtab(
             ),
             tooltip=[
                 alt.Tooltip("Stap:N"),
-                alt.Tooltip("Volume:Q", title="Volume Change (MWh)", format=",.0f"),
+                alt.Tooltip("Volume:Q", title="Volume (MWh)", format=",.0f"),
             ],
         )
         .properties(height=400)
@@ -476,7 +460,11 @@ def _render_volume_subtab(
     st.altair_chart(waterfall, use_container_width=True)
 
 
-def _render_economics_subtab(
+# ═══════════════════════════════════════════════════════════════════════════
+# Kengetallen (per MWh)
+# ═══════════════════════════════════════════════════════════════════════════
+
+def render_economics(
     financial: FinancialSummary,
     epex_loaded: bool,
 ) -> None:
@@ -501,7 +489,7 @@ def _render_economics_subtab(
         f"€ {financial.capture_diff:.2f} t.o.v. de markt",
         delta_color="normal" if financial.capture_diff > 0 else "inverse",
         help=(
-            "De échte gemiddelde waarde van jouw stroomprofiel op de spotmarkt."
+            "De gemiddelde waarde van jouw stroomprofiel op de spotmarkt."
         ),
     )
 
@@ -509,82 +497,3 @@ def _render_economics_subtab(
     u3, u4 = st.columns(2)
     u3.metric("Wat betaalde je voor tekorten?", f"€ {financial.avg_spot_buy:.2f}")
     u4.metric("Wat leverde je overschot op?", f"€ {financial.avg_spot_sell:.2f}")
-
-
-def _render_seasonal_subtab(
-    df: pd.DataFrame,
-    p_mw_col: str,
-    q_stats: pd.DataFrame,
-    epex_loaded: bool,
-) -> None:
-    """Seizoensgrafieken + kwartaaltabel + downloadknop."""
-    st.markdown("### Seizoenen in de praktijk _")
-
-    # Bepaal het jaar uit de data
-    data_year = df["Date"].dt.year.mode().iloc[0]
-
-    cols_chart = st.columns(2) + st.columns(2)
-
-    for i, week_cfg in enumerate(cfg.SEASONAL_WEEKS):
-        with cols_chart[i]:
-            st.caption(week_cfg["name"])
-
-            try:
-                week_start = pd.Timestamp.fromisocalendar(
-                    data_year, week_cfg["iso_week"], 1
-                )
-                week_end = week_start + pd.Timedelta(days=6)
-            except (ValueError, AttributeError):
-                st.info("Kan weekdatum niet bepalen.")
-                continue
-
-            if df["Date"].min() > week_end or df["Date"].max() < week_start:
-                st.info("Geen data beschikbaar voor deze periode.")
-                continue
-
-            mask = (df["Date"] >= week_start) & (
-                df["Date"] <= week_end + pd.Timedelta(days=1)
-            )
-            plot_df = df.loc[mask, ["Date", p_mw_col, "Current_Hedge_MW"]].copy()
-            plot_df.rename(
-                columns={p_mw_col: "Jouw profiel", "Current_Hedge_MW": "Inkoopblok"},
-                inplace=True,
-            )
-
-            chart_data = plot_df.melt(
-                id_vars=["Date"], var_name="Type", value_name="MW"
-            )
-            c = (
-                alt.Chart(chart_data)
-                .mark_line(interpolate="step-after")
-                .encode(
-                    x=alt.X(
-                        "Date:T",
-                        axis=alt.Axis(format="%a %H:%M", title=None),
-                    ),
-                    y=alt.Y("MW:Q", title=None),
-                    color=alt.Color(
-                        "Type:N",
-                        scale=alt.Scale(
-                            domain=["Jouw profiel", "Inkoopblok"],
-                            range=[cfg.COLORS["dark_grey"], cfg.COLORS["gold"]],
-                        ),
-                        legend=alt.Legend(orient="bottom", title=None),
-                    ),
-                )
-                .properties(height=180)
-            )
-            st.altair_chart(c, use_container_width=True)
-
-    # --- Kwartaaloverzicht ---
-    st.markdown("---")
-    st.markdown("### Kwartaaloverzicht _")
-
-    format_dict = {k: v for k, v in QUARTERLY_FORMAT.items() if k in q_stats.columns}
-    st.dataframe(q_stats.style.format(format_dict), use_container_width=True)
-
-    # --- Download ---
-    csv_dl = df.to_csv(index=False).encode("utf-8")
-    st.download_button(
-        "Download je analyse (CSV)", csv_dl, "censo_analyse.csv", "text/csv"
-    )

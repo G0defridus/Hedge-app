@@ -84,36 +84,24 @@ PROFILE_CHOICES = ["Consumer", "Prosumer", "Producer", "Total"]
 DATE_COLUMN_ALIASES = ["Datum", "Tijd", "Time", "date", "time"]
 
 # ---------------------------------------------------------------------------
-# Verkoopproducten (3 varianten)
-# ---------------------------------------------------------------------------
-PRODUCTS = [
-    {"key": "max_zekerheid", "label": "Max Zekerheid",
-     "desc": "Koop zoveel mogelijk in via vaste ENDEX-blokken"},
-    {"key": "min_hedge", "label": "Minimale Hedge",
-     "desc": "Dek slechts ~10% van je volume af, rest via spot"},
-    {"key": "flex", "label": "Volledig Flex",
-     "desc": "Geen vaste inkoop — 100% op de spotmarkt"},
-]
-
-MIN_HEDGE_VOLUME_PCT = 10  # Doelpercentage voor "Minimale Hedge"
-
-# ---------------------------------------------------------------------------
 # Optimalisatie-strategieën (4 opties)
 # ---------------------------------------------------------------------------
 OPTIMIZATIONS = [
-    {"key": "least_cost",
-     "label": "Laagste kosten",
-     "desc": "Test 1.600 combinaties en kiest de goedkoopste mix van vaste inkoop + spotmarkt."},
-    {"key": "value_risk",
+    {"key": "value_hedge",
      "label": "Value Hedge",
-     "desc": "Weegt je inkoop naar prijsniveau: meer MW in dure uren, minder in goedkope. Elimineert spotexposure bij 100% dekking."},
-    {"key": "max_5pct",
-     "label": "Max 5% ENDEX verkoop",
-     "desc": "Koop zoveel mogelijk in, maar maximaal 5% terugverkopen op de spotmarkt."},
-    {"key": "100vol",
-     "label": "100% volume",
-     "desc": "Dek het gemiddelde profiel exact af: Base = off-peak gemiddelde, Peak = piekgemiddelde."},
+     "desc": "Weegt je inkoop naar prijsniveau: meer MW in dure uren, minder in goedkope."},
+    {"key": "max_hedge",
+     "label": "Maximum Hedge",
+     "desc": "Koop zoveel mogelijk in via ENDEX-blokken, maximaal 5% terugverkoop."},
+    {"key": "min_hedge",
+     "label": "Minimum Hedge",
+     "desc": "Dek ~10% van je volume af, de rest via de spotmarkt."},
+    {"key": "least_cost",
+     "label": "Least Cost",
+     "desc": "Test 1.600 combinaties en kiest de goedkoopste mix."},
 ]
 
-# Categorieën voor de vergelijkingstabel (zonder 'Total')
+MIN_HEDGE_VOLUME_PCT = 10  # Doelpercentage voor "Minimum Hedge"
+
+# Categorieën (zonder 'Total')
 CATEGORY_CHOICES = ["Consumer", "Prosumer", "Producer"]

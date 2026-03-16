@@ -66,9 +66,17 @@ div[data-testid="stVerticalBlock"] .scenario-cell.selected {{
     border-color: {cfg.COLORS['gold']};
     box-shadow: 0 0 0 2px {cfg.COLORS['gold']};
 }}
-div[data-testid="stVerticalBlock"] .scenario-cell.not-applicable {{
-    opacity: 0.45;
-    pointer-events: none;
+.scenario-cell .cell-title {{
+    font-size: 1.05rem;
+    font-weight: 700;
+    color: {cfg.COLORS['black']};
+    margin-bottom: 0.3rem;
+}}
+.scenario-cell .cell-desc {{
+    font-size: 0.8rem;
+    color: {cfg.COLORS['dark_grey']};
+    margin-bottom: 0.6rem;
+    line-height: 1.3;
 }}
 .scenario-cell .cell-price {{
     font-size: 1.4rem;

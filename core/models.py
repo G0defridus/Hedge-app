@@ -92,18 +92,16 @@ class PricingError(Exception):
 
 
 # ---------------------------------------------------------------------------
-# Scenario-vergelijking (3 producten × 4 optimalisaties)
+# Scenario-vergelijking (4 optimalisaties)
 # ---------------------------------------------------------------------------
 @dataclass
 class ScenarioResult:
-    """Resultaat van één product × optimalisatie combinatie."""
+    """Resultaat van één optimalisatie-strategie."""
 
-    product: str          # "max_zekerheid" | "min_hedge" | "flex"
-    optimization: str     # "least_cost" | "value_risk" | "max_5pct" | "100vol"
+    optimization: str     # "value_hedge" | "max_hedge" | "min_hedge" | "least_cost"
     position: HedgePosition = field(default_factory=HedgePosition)
     results: HedgeResults = field(default_factory=HedgeResults)
     financial: FinancialSummary = field(default_factory=FinancialSummary)
-    applicable: bool = True   # False voor n.v.t. cellen
 
 
 @dataclass

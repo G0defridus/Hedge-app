@@ -31,11 +31,12 @@ _DEFAULTS: dict[str, Any] = {
     "slider_b_q4": 0.0,
     "slider_p_q4": 0.0,
 
-    # --- Tab 1: configuratie ---
+    # --- Sidebar configuratie ---
+    "selected_category": "Consumer",
     "strategy_period": "Per Jaar",
 
-    # --- Tab 2: scenario-selectie ---
-    "selected_scenarios": {},  # {category: {"product": ..., "optimization": ...}}
+    # --- Scenario-selectie ---
+    "selected_scenarios": {},  # {category: {"optimization": ...}}
 }
 
 
@@ -47,7 +48,7 @@ def init_state() -> None:
 
 
 # ---------------------------------------------------------------------------
-# Hedge positie per periode (Tab 3 sliders)
+# Hedge positie per periode (finetuning sliders)
 # ---------------------------------------------------------------------------
 
 def _suffix(quarter: int | None) -> str:
@@ -71,20 +72,20 @@ def set_hedge_position(pos: HedgePosition, quarter: int | None = None) -> None:
 
 
 # ---------------------------------------------------------------------------
-# Scenario-selectie (Tab 2 → Tab 3 bridge)
+# Scenario-selectie (vergelijkingstabel → resultaten)
 # ---------------------------------------------------------------------------
 
 def set_selected_scenario(
-    category: str, product: str, optimization: str
+    category: str, optimization: str
 ) -> None:
     """Sla de gebruikerselectie op voor een categorie."""
     selected = st.session_state.get("selected_scenarios", {})
-    selected[category] = {"product": product, "optimization": optimization}
+    selected[category] = {"optimization": optimization}
     st.session_state["selected_scenarios"] = selected
 
 
 def get_selected_scenario(category: str) -> Optional[dict[str, str]]:
-    """Haal de selectie op voor een categorie. Returns {"product": ..., "optimization": ...} of None."""
+    """Haal de selectie op voor een categorie. Returns {"optimization": ...} of None."""
     selected = st.session_state.get("selected_scenarios", {})
     return selected.get(category)
 

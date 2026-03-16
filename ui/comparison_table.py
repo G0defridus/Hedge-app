@@ -1,7 +1,8 @@
 """
-Vergelijkingstabel — rendert de 3 producten × 4 optimalisaties matrix.
+Optimalisatie-kaarten — rendert 4 horizontale kaarten voor de strategiekeuze.
 
-Elke cel toont: €/MWh, hedge%, en een [Selecteer]-knop.
+Elke kaart toont: label, beschrijving, prijs/MWh, hedge%, en een selecteer-knop.
+Geselecteerde kaart krijgt een goud-rand.
 """
 
 from __future__ import annotations
@@ -14,36 +15,29 @@ from core.scenario_engine import get_scenario
 from ui import state as ui_state
 
 
-def _render_cell(
-    scenario: ScenarioResult | None,
+def _render_card(
+    scenario: ScenarioResult,
+    opt_cfg: dict,
     category: str,
     col,
+    *,
+    key_prefix: str = "",
+    selectable: bool = True,
 ) -> None:
-    """Render één cel van de vergelijkingstabel."""
-    if scenario is None:
-        col.markdown("—")
-        return
-
-    if not scenario.applicable:
-        col.markdown(
-            '<div class="scenario-cell not-applicable">'
-            '<div class="cell-price">—</div>'
-            '<div class="cell-hedge">n.v.t.</div>'
-            "</div>",
-            unsafe_allow_html=True,
-        )
-        return
-
+    """Render één optimalisatie-kaart."""
     fin = scenario.financial
     res = scenario.results
 
-    # Check of dit scenario momenteel geselecteerd is
-    sel = ui_state.get_selected_scenario(category)
-    is_selected = (
-        sel is not None
-        and sel["product"] == scenario.product
-        and sel["optimization"] == scenario.optimization
-    )
+    # Check of dit scenario geselecteerd is
+    if selectable:
+        sel = ui_state.get_selected_scenario(category)
+        is_selected = (
+            sel is not None
+            and sel["optimization"] == scenario.optimization
+        )
+    else:
+        is_selected = False
+
     css_class = "scenario-cell selected" if is_selected else "scenario-cell"
 
     # Prijs weergave
@@ -59,6 +53,8 @@ def _render_cell(
 
     col.markdown(
         f'<div class="{css_class}">'
+        f'<div class="cell-title">{opt_cfg["label"]}</div>'
+        f'<div class="cell-desc">{opt_cfg["desc"]}</div>'
         f'<div class="cell-price">{price_str}</div>'
         f'<div class="cell-hedge">{hedge_str}</div>'
         f'<div class="cell-label">{price_label}</div>'
@@ -67,41 +63,42 @@ def _render_cell(
     )
 
     # Selecteer-knop
-    btn_label = "✓ Geselecteerd" if is_selected else "Selecteer"
-    btn_key = f"sel_{category}_{scenario.product}_{scenario.optimization}"
-    if col.button(btn_label, key=btn_key, use_container_width=True):
-        ui_state.set_selected_scenario(
-            category, scenario.product, scenario.optimization
-        )
-        ui_state.set_hedge_position(scenario.position)
-        st.rerun()
+    if selectable:
+        btn_label = "✓ Geselecteerd" if is_selected else "Selecteer"
+        btn_key = f"sel_{key_prefix}{category}_{scenario.optimization}"
+        if col.button(btn_label, key=btn_key, use_container_width=True):
+            ui_state.set_selected_scenario(category, scenario.optimization)
+            ui_state.set_hedge_position(scenario.position)
+            st.rerun()
 
 
-def render_comparison_table(cat_scenarios: CategoryScenarios) -> None:
-    """Render de volledige vergelijkingstabel voor één categorie.
+def render_comparison_table(
+    cat_scenarios: CategoryScenarios,
+    *,
+    key_prefix: str = "",
+    selectable: bool = True,
+) -> None:
+    """Render 4 optimalisatie-kaarten naast elkaar.
 
-    Layout: 4 rijen (optimalisaties) × 3 kolommen (producten).
+    Parameters
+    ----------
+    cat_scenarios : CategoryScenarios
+        De berekende scenario's (4 optimalisaties).
+    key_prefix : str
+        Prefix voor widget keys (bijv. "q1_" voor kwartaal-specifieke tabellen).
+    selectable : bool
+        Als True, toon Selecteer-knoppen en selectie-highlighting.
     """
     category = cat_scenarios.category
 
-    # Kolomheaders
-    header_cols = st.columns([1.5] + [1] * len(cfg.PRODUCTS))
-    header_cols[0].markdown("**Strategie**")
-    for i, prod in enumerate(cfg.PRODUCTS):
-        header_cols[i + 1].markdown(f"**{prod['label']}**")
-        header_cols[i + 1].caption(prod["desc"])
+    cols = st.columns(len(cfg.OPTIMIZATIONS))
 
-    st.markdown("---")
-
-    # Rijen: één per optimalisatie
-    for opt in cfg.OPTIMIZATIONS:
-        row_cols = st.columns([1.5] + [1] * len(cfg.PRODUCTS))
-        row_cols[0].markdown(f"**{opt['label']}**")
-        if opt.get("desc"):
-            row_cols[0].caption(opt["desc"])
-
-        for j, prod in enumerate(cfg.PRODUCTS):
-            scenario = get_scenario(cat_scenarios, prod["key"], opt["key"])
-            _render_cell(scenario, category, row_cols[j + 1])
-
-        st.markdown("<br>", unsafe_allow_html=True)
+    for i, opt_cfg in enumerate(cfg.OPTIMIZATIONS):
+        scenario = get_scenario(cat_scenarios, opt_cfg["key"])
+        if scenario is not None:
+            _render_card(
+                scenario, opt_cfg, category, cols[i],
+                key_prefix=key_prefix, selectable=selectable,
+            )
+        else:
+            cols[i].markdown("—")

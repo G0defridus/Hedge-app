@@ -195,15 +195,29 @@ def optimize_financial(
     if "EPEX_EUR_MWh" not in sub_df.columns or sub_df["EPEX_EUR_MWh"].sum() == 0:
         return find_optimal_position(sub_df, profile_col, percent_volume_target=100)
 
-    # Zoekgrenzen
-    prof_min = sub_df[profile_col].min()
-    prof_max = sub_df[profile_col].max()
-    bound_min = min(0, prof_min * 1.5)
-    bound_max = max(0, prof_max * 1.5)
+    # Profielgemiddelden per blok — zoekgrenzen baseren op werkelijke vraag
+    offpeak_mean = sub_df.loc[~sub_df["is_peak"].astype(bool), profile_col].mean()
+    peak_mean = sub_df.loc[sub_df["is_peak"].astype(bool), profile_col].mean()
+
+    if pd.isna(offpeak_mean):
+        offpeak_mean = 0.0
+    if pd.isna(peak_mean):
+        peak_mean = 0.0
+
+    # Zoekrichting volgt het profiel: positief (kopen) voor consumers,
+    # negatief (verkopen) voor producers. Altijd van 0 naar profiel × 1.2.
+    base_target = offpeak_mean * 1.2
+    peak_add_target = (peak_mean - offpeak_mean) * 1.2
+
+    # Minimaal zoekbereik als profiel erg klein is
+    if abs(base_target) < 0.5:
+        base_target = 0.5 if offpeak_mean >= 0 else -0.5
+    if abs(peak_add_target) < 0.5:
+        peak_add_target = 0.5 if (peak_mean - offpeak_mean) >= 0 else -0.5
 
     steps = cfg.GRID_SEARCH_STEPS
-    b_vals = np.linspace(bound_min, bound_max, steps)
-    p_vals = np.linspace(bound_min, bound_max, steps)
+    b_vals = np.linspace(0, base_target, steps)
+    p_vals = np.linspace(0, peak_add_target, steps)
     B, P = np.meshgrid(b_vals, p_vals)
     B_flat = B.flatten()
     P_flat = P.flatten()
