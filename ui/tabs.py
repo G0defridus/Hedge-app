@@ -53,6 +53,30 @@ def render_seasonal_preview(
 
     data_year = df["Date"].dt.year.mode().iloc[0]
 
+    # ── Globaal Y-bereik bepalen zodat alle 4 grafieken dezelfde schaal delen ──
+    all_mw_values: list[float] = []
+    for wk in cfg.SEASONAL_WEEKS:
+        try:
+            ws = pd.Timestamp.fromisocalendar(data_year, wk["iso_week"], 1)
+            we = ws + pd.Timedelta(days=7)
+        except (ValueError, AttributeError):
+            continue
+        m = (df["Date"] >= ws) & (df["Date"] <= we)
+        if m.any():
+            all_mw_values.append(df.loc[m, p_mw_col].min())
+            all_mw_values.append(df.loc[m, p_mw_col].max())
+            if has_hedge and "Current_Hedge_MW" in df.columns:
+                all_mw_values.append(df.loc[m, "Current_Hedge_MW"].min())
+                all_mw_values.append(df.loc[m, "Current_Hedge_MW"].max())
+
+    if all_mw_values:
+        y_min = min(all_mw_values)
+        y_max = max(all_mw_values)
+        margin = (y_max - y_min) * 0.05 if y_max != y_min else 1
+        y_domain = [y_min - margin, y_max + margin]
+    else:
+        y_domain = [0, 1]
+
     cols_chart = st.columns(2) + st.columns(2)
 
     for i, week_cfg in enumerate(cfg.SEASONAL_WEEKS):
@@ -101,7 +125,7 @@ def render_seasonal_preview(
                         "Date:T",
                         axis=alt.Axis(format="%a %H:%M", title=None),
                     ),
-                    y=alt.Y("MW:Q", title=None),
+                    y=alt.Y("MW:Q", title=None, scale=alt.Scale(domain=y_domain)),
                     color=alt.Color(
                         "Type:N",
                         scale=alt.Scale(domain=domain, range=colors),
@@ -407,23 +431,27 @@ def render_volume_flow(
             "Kleur": "Hedge",
         }
     )
+    # Spot inkoop (tekort) → koopt ontbrekend volume, bar gaat omlaag
+    pos_after_spot_buy = eind_hedge
     if results.under_hedge_mwh > 0:
+        pos_after_spot_buy = eind_hedge - results.under_hedge_mwh
         wf_data.append(
             {
                 "Stap": "3. Spot inkoop (tekort)",
                 "Start": eind_hedge,
-                "Eind": 0,
+                "Eind": pos_after_spot_buy,
                 "Volume": results.under_hedge_mwh,
                 "Kleur": "Tekort",
             }
         )
+    # Spot verkoop (overschot) → verkoopt surplus, bar gaat omhoog richting 0
     if results.over_hedge_mwh > 0:
         wf_data.append(
             {
                 "Stap": "4. Spot verkoop (overschot)",
-                "Start": eind_hedge,
-                "Eind": 0,
-                "Volume": -results.over_hedge_mwh,
+                "Start": pos_after_spot_buy,
+                "Eind": pos_after_spot_buy + results.over_hedge_mwh,
+                "Volume": results.over_hedge_mwh,
                 "Kleur": "Overschot",
             }
         )
