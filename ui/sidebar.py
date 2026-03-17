@@ -13,7 +13,7 @@ import pandas as pd
 import streamlit as st
 
 import config as cfg
-from core.pricing import get_default_price
+from core.pricing import contract_year_from_df, get_default_price, get_marktdata_source
 
 
 # ═══════════════════════════════════════════════════════════════════════════
@@ -105,8 +105,10 @@ def render_config_sidebar(df: pd.DataFrame) -> dict[str, Any]:
     df["Price_Base"] = 0.0
     df["Price_Peak"] = 0.0
 
+    cal_year = contract_year_from_df(df)
+
     if strategy_period == "Per Jaar":
-        def_b, def_p = get_default_price("Jaar")
+        def_b, def_p = get_default_price("Jaar", contract_year=cal_year)
         c1, c2 = st.sidebar.columns(2)
         pr_b = c1.number_input(
             "Base €/MWh", value=def_b, step=1.0, key="price_base_yr"
@@ -118,7 +120,7 @@ def render_config_sidebar(df: pd.DataFrame) -> dict[str, Any]:
         df["Price_Peak"] = pr_p
     else:
         for q in [1, 2, 3, 4]:
-            def_b, def_p = get_default_price("Kwartaal", q)
+            def_b, def_p = get_default_price("Kwartaal", q, contract_year=cal_year)
             c1, c2 = st.sidebar.columns(2)
             pr_b = c1.number_input(
                 f"Q{q} Base", value=def_b, step=1.0, key=f"pr_b_q{q}"
@@ -129,6 +131,15 @@ def render_config_sidebar(df: pd.DataFrame) -> dict[str, Any]:
             q_mask = df["Quarter"] == q
             df.loc[q_mask, "Price_Base"] = pr_b
             df.loc[q_mask, "Price_Peak"] = pr_p
+
+    # Bron-indicator
+    source = get_marktdata_source()
+    if source:
+        st.sidebar.caption(
+            f"Bron: {source['contract']} — "
+            f"Base €{source['base_value']:.2f} / Peak €{source['peak_value']:.2f} "
+            f"({source['trade_date']})"
+        )
 
     st.sidebar.markdown("---")
 
