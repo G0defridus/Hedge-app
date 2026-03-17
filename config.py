@@ -27,6 +27,8 @@ SCALING_CLIP_MAX = 5.0
 # ---------------------------------------------------------------------------
 GRID_SEARCH_STEPS = 40                 # 40×40 = 1.600 scenario's per periode
 VOLUME_SEARCH_MAX_PCT = 150            # Zoekbereik: 150% → 1%
+LEAST_COST_SEARCH_FACTOR = 1.5         # Zoek tot 150% van profiel
+LEAST_COST_MAX_SELLBACK_PCT = 20       # Max 20% terugverkoop van totaal volume
 
 # ---------------------------------------------------------------------------
 # Standaard contractprijzen (€/MWh) — fallback als er geen CSV is

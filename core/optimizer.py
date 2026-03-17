@@ -205,9 +205,10 @@ def optimize_financial(
         peak_mean = 0.0
 
     # Zoekrichting volgt het profiel: positief (kopen) voor consumers,
-    # negatief (verkopen) voor producers. Altijd van 0 naar profiel × 1.2.
-    base_target = offpeak_mean * 1.2
-    peak_add_target = (peak_mean - offpeak_mean) * 1.2
+    # negatief (verkopen) voor producers.
+    factor = cfg.LEAST_COST_SEARCH_FACTOR
+    base_target = offpeak_mean * factor
+    peak_add_target = (peak_mean - offpeak_mean) * factor
 
     # Minimaal zoekbereik als profiel erg klein is
     if abs(base_target) < 0.5:
@@ -226,6 +227,8 @@ def optimize_financial(
     prof_mwh = sub_df[profile_col].values * cfg.MWH_FACTOR
     epex = sub_df["EPEX_EUR_MWh"].values
     is_peak = sub_df["is_peak"].values.astype(float)
+    total_prof_mwh = np.sum(np.abs(prof_mwh))
+    max_sellback = cfg.LEAST_COST_MAX_SELLBACK_PCT
 
     best_val = float("inf")
     best_b, best_p = 0.0, 0.0
@@ -238,6 +241,14 @@ def optimize_financial(
 
         over = np.maximum(0, hedge_mwh - prof_mwh)
         under = np.maximum(0, prof_mwh - hedge_mwh)
+
+        # Terugverkoop-cap: skip combinaties met te veel overschot
+        # Meet netto over-hedge t.o.v. hedge-volume (niet profiel-volume),
+        # zodat producers niet onterecht geblokkeerd worden.
+        hedge_abs_total = np.sum(np.abs(hedge_mwh))
+        over_total = np.sum(over)
+        if hedge_abs_total > 0 and (over_total / hedge_abs_total * 100) > max_sellback:
+            continue
 
         spot_cost = np.sum(under * epex) - np.sum(over * epex)
         hedge_cost_hourly = (b * cfg.MWH_FACTOR * price_base) + (
